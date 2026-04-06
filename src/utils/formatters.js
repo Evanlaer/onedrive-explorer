@@ -15,11 +15,15 @@ export function formatBytes(bytes) {
  */
 export function formatDate(isoString) {
   if (!isoString) return '—';
-  return new Date(isoString).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+  try {
+    return new Date(isoString).toLocaleDateString(undefined, {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+    });
+  } catch (err) {
+    return '—';
+  }
 }
 
 /**

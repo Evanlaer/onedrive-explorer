@@ -1,0 +1,58 @@
+.cloud-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface-default);
+  overflow: hidden;
+}
+
+.pane-header-wrap {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-high);
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.pane-title {
+  padding: 12px 20px 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.pane-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.cloud-pane--locked {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-low);
+  text-align: center;
+}
+
+.pane-auth-card {
+  padding: 40px;
+  background: var(--surface-high);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--outline-variant);
+}
+
+.login-btn-small {
+  margin-top: 16px;
+  padding: 8px 26px;
+  background: var(--primary-container);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  transition: background var(--transition-fast);
+}
+
+.login-btn-small:hover {
+  background: #005a9e;
+}

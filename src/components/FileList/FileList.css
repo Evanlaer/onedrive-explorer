@@ -6,9 +6,9 @@
 
 .filelist-header {
   display: grid;
-  grid-template-columns: 1fr auto 140px;
+  grid-template-columns: 1fr 140px;
   padding: 8px 16px;
-  font-size: 0.6875rem;
+  font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.07em;
@@ -49,12 +49,18 @@
   flex-direction: column;
   gap: 4px;
 }
-.filelist-skeleton-item {
-  display: flex;
+.filelist-skeleton.file-item {
+  display: grid;
+  grid-template-columns: 1fr 140px;
   align-items: center;
-  gap: 14px;
-  padding: 11px 16px;
+  padding: 10px 14px;
   border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  border: 1px solid transparent;
+  margin-bottom: 2px;
 }
 .skeleton-icon {
   width: 36px;

@@ -2,56 +2,66 @@ import './App.css';
 import { useState, useEffect } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
-import LoginPage from './components/LoginPage/LoginPage';
 import Sidebar from './components/Sidebar/Sidebar';
-import Header from './components/Header/Header';
-import FileList from './components/FileList/FileList';
-import { useDriveItems } from './hooks/useDriveItems';
+import CloudPane from './components/CloudPane/CloudPane';
 import { getUserProfile } from './api/graphService';
+import { initGoogleAuth, loginGoogle, logoutGoogle } from './auth/googleAuthService';
+import { getGoogleUserProfile } from './api/googleDriveService';
 
-function ExplorerApp() {
+export default function App() {
   const { instance, inProgress } = useMsal();
-  const [currentFolderId, setCurrentFolderId] = useState(null);
-  const [breadcrumbs, setBreadcrumbs] = useState([]); // [{id, name}]
-  const [userProfile, setUserProfile] = useState(null);
-  const { items, loading, error } = useDriveItems(currentFolderId);
+  const isOneDriveAuth = useIsAuthenticated();
 
-  // Load user profile once on mount
+  // Google Auth State
+  const [googleToken, setGoogleToken] = useState(sessionStorage.getItem('google_token'));
+  const [googleProfile, setGoogleProfile] = useState(null);
+  const [msProfile, setMsProfile] = useState(null);
+
+  // Initialize Google Auth on mount
   useEffect(() => {
-    getUserProfile(instance)
-      .then(setUserProfile)
-      .catch(() => { }); // non-critical
-  }, [instance]);
+    initGoogleAuth((token) => {
+      setGoogleToken(token);
+      sessionStorage.setItem('google_token', token);
+    });
+  }, []);
 
-  // Navigate INTO a folder (appends to breadcrumb)
-  const handleFolderClick = (folderId, folderName) => {
-    if (folderId === null) {
-      // Go to root
-      setCurrentFolderId(null);
-      setBreadcrumbs([]);
+  // Fetch Profiles
+  useEffect(() => {
+    if (isOneDriveAuth) {
+      getUserProfile(instance).then(setMsProfile).catch(() => {});
     } else {
-      setCurrentFolderId(folderId);
-      setBreadcrumbs((prev) => [...prev, { id: folderId, name: folderName }]);
+      setMsProfile(null);
     }
+  }, [isOneDriveAuth, instance]);
+
+  useEffect(() => {
+    if (googleToken) {
+      getGoogleUserProfile(googleToken).then(setGoogleProfile).catch(() => {
+        setGoogleToken(null);
+        sessionStorage.removeItem('google_token');
+      });
+    } else {
+      setGoogleProfile(null);
+    }
+  }, [googleToken]);
+
+  const handleLogoutOneDrive = () => {
+    instance.logoutRedirect();
   };
 
-  // Navigate via breadcrumb (truncates trail)
-  const handleBreadcrumbClick = (index) => {
-    if (index === 0) {
-      // Clicked "My Drive" home
-      setCurrentFolderId(null);
-      setBreadcrumbs([]);
-    } else {
-      const crumb = breadcrumbs[index - 1];
-      setCurrentFolderId(crumb.id);
-      setBreadcrumbs((prev) => prev.slice(0, index));
-    }
+  const handleLogoutGoogle = () => {
+    logoutGoogle(googleToken);
+    setGoogleToken(null);
+    sessionStorage.removeItem('google_token');
+    setGoogleProfile(null);
   };
 
-  if (inProgress !== InteractionStatus.None) {
+  // Loading states
+  if (inProgress === InteractionStatus.Startup || inProgress === InteractionStatus.HandleRedirect) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-secondary)' }}>
-        <p>Signing in…</p>
+      <div className="loading-screen">
+        <div className="loader"></div>
+        <p>Initializing Multi-Cloud Explorer...</p>
       </div>
     );
   }
@@ -59,46 +69,28 @@ function ExplorerApp() {
   return (
     <div className="app-shell">
       <Sidebar
-        activeFolderId={currentFolderId}
-        onFolderClick={handleFolderClick}
-        userProfile={userProfile}
+        userProfile={msProfile}
+        googleProfile={googleProfile}
+        onLogoutOneDrive={handleLogoutOneDrive}
+        onLogoutGoogle={handleLogoutGoogle}
       />
-      <Header
-        breadcrumbs={breadcrumbs}
-        onBreadcrumbClick={handleBreadcrumbClick}
+      
+      {/* Left Pane: OneDrive */}
+      <CloudPane
+        type="onedrive"
+        title="OneDrive"
+        isAuthenticated={isOneDriveAuth}
+        onLogin={() => instance.loginRedirect()}
       />
-      <main
-        style={{
-          gridArea: 'main',
-          overflow: 'hidden',
-          display: 'flex',
-          flexDirection: 'column',
-          background: 'var(--surface-default)',
-        }}
-      >
-        <FileList
-          items={items}
-          loading={loading}
-          error={error}
-          onFolderClick={handleFolderClick}
-        />
-      </main>
+
+      {/* Right Pane: Google Drive */}
+      <CloudPane
+        type="google"
+        title="Google Drive"
+        isAuthenticated={!!googleToken}
+        accessToken={googleToken}
+        onLogin={loginGoogle}
+      />
     </div>
   );
-}
-
-export default function App() {
-  const isAuthenticated = useIsAuthenticated();
-  const { inProgress } = useMsal();
-
-  // Show nothing while MSAL loads (handles redirect callback)
-  if (inProgress === InteractionStatus.Startup || inProgress === InteractionStatus.HandleRedirect) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', color: 'var(--text-secondary)' }}>
-        <p>Loading…</p>
-      </div>
-    );
-  }
-
-  return isAuthenticated ? <ExplorerApp /> : <LoginPage />;
 }

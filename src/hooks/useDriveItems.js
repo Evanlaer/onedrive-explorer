@@ -18,6 +18,11 @@ export function useDriveItems(folderId) {
     setError(null);
 
     const fetch = async () => {
+      if (folderId === 'DISABLED') {
+        setItems([]);
+        setLoading(false);
+        return;
+      }
       try {
         const data = folderId
           ? await getFolderChildren(instance, folderId)

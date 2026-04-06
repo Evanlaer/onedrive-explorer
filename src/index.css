@@ -48,6 +48,7 @@
   /* Layout */
   --sidebar-width:         240px;
   --header-height:         52px;
+  --pane-header-height:    80px;
 
   /* Transitions */
   --transition-fast:       150ms ease;
@@ -65,6 +66,74 @@ html, body, #root {
   font-size: 14px;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* ── App Shell ── */
+.app-shell {
+  display: grid;
+  grid-template-columns: var(--sidebar-width) 1fr 1fr; /* 3 columns: Sidebar, Pane 1, Pane 2 */
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* Separator between panes */
+.app-shell > div + div {
+  border-left: 1px solid var(--outline-variant);
+}
+
+.cloud-pane {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background: var(--surface-default);
+  overflow: hidden;
+}
+
+.pane-header-wrap {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-high);
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.pane-title {
+  padding: 12px 20px 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.pane-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.cloud-pane--locked {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--surface-low);
+  text-align: center;
+}
+
+.pane-auth-card {
+  padding: 40px;
+  background: var(--surface-high);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--outline-variant);
+}
+
+.login-btn-small {
+  margin-top: 16px;
+  padding: 8px 16px;
+  background: var(--primary-container);
+  color: white;
+  border: none;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
 }
 
 a { color: var(--primary); text-decoration: none; }

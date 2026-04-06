@@ -1,16 +1,37 @@
-# React + Vite
+# Multi-Cloud Explorer (OneDrive + Google Drive)
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+A premium, dual-pane file explorer built with **React + Vite**. Authenticate with your Microsoft and Google accounts to browse and navigate your cloud files side-by-side.
 
-Currently, two official plugins are available:
+## ✨ Features
+- **Dual-Pane Layout**: Browse OneDrive and Google Drive simultaneously.
+- **Independent Auth**: Sign in/out of each account separately.
+- **Side-by-Side Navigation**: Folder clicks in one pane don't affect the other.
+- **Custom Icon Mapping**: Support for Word, Excel, PDF, and Google Workspace files.
+- **Zero-Cost**: Pure frontend architecture using official cloud APIs.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+## 🚀 Getting Started
 
-## React Compiler
+1. **Install dependencies**:
+   ```bash
+   npm install
+   ```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+2. **Configure Environment**:
+   Create a `.env` file from the placeholder:
+   ```bash
+   VITE_CLIENT_ID=your_azure_client_id
+   VITE_GOOGLE_CLIENT_ID=your_google_client_id
+   ```
 
-## Expanding the ESLint configuration
+3. **Run Locally**:
+   ```bash
+   npm run dev
+   ```
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+4. **Documentation**:
+   Detailed technical specs are available in the [docs/](file:///c:/Users/eric_/OneDrive/Apps/Ondrive%20to%20Google%20drive/onedrive-explorer/docs/) folder.
+
+## 🛡️ Authentication
+- **OneDrive**: Microsoft MSAL (PKCE Flow).
+- **Google Drive**: Google Identity Services (GIS).
+- All tokens are stored in `sessionStorage` for security.

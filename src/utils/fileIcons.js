@@ -3,11 +3,19 @@
 // We export a function that components call to get the right icon config
 
 export function getFileIconConfig(item) {
-  if (item.folder) {
+  const isFolder = item.folder || item.mimeType === 'application/vnd.google-apps.folder';
+  if (isFolder) {
     return { type: 'folder', color: '#F5A623', label: 'Folder' };
   }
 
+  const mime = item.mimeType || '';
   const ext = item.name?.split('.').pop()?.toLowerCase() || '';
+
+  // Google Specific MimeTypes
+  if (mime.includes('vnd.google-apps.document')) return { type: 'word', color: '#4285F4', label: 'Google Doc' };
+  if (mime.includes('vnd.google-apps.spreadsheet')) return { type: 'excel', color: '#0F9D58', label: 'Google Sheet' };
+  if (mime.includes('vnd.google-apps.presentation')) return { type: 'ppt', color: '#F4B400', label: 'Google Slide' };
+  if (mime === 'application/pdf') return { type: 'pdf', color: '#E53935', label: 'PDF' };
 
   const map = {
     // Documents
