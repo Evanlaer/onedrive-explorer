@@ -1,0 +1,71 @@
+/* ============================================
+   ONEDRIVE EXPLORER — Global Design System
+   Azure Horizon Theme: Dark, premium, atmospheric
+   ============================================ */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Bebas+Neue&display=swap');
+
+/* ── CSS Variables ── */
+:root {
+  /* Core surfaces (tonal layering — no hard borders) */
+  --surface-base:          #080e1d;
+  --surface-low:           #0c1323;
+  --surface-default:       #12192b;
+  --surface-high:          #171f33;
+  --surface-highest:       #1d253b;
+  --surface-bright:        #222c43;
+
+  /* Text */
+  --text-primary:          #e0e5fa;
+  --text-secondary:        #a5aabf;
+  --text-muted:            #6f7588;
+
+  /* Brand */
+  --primary:               #73b1ff;
+  --primary-container:     #0078d4;
+  --primary-glow:          rgba(115, 177, 255, 0.15);
+  --primary-glow-strong:   rgba(0, 120, 212, 0.25);
+
+  /* Borders / outlines */
+  --outline:               #6f7588;
+  --outline-variant:       rgba(66, 72, 89, 0.4);
+
+  /* Status */
+  --error:                 #ff716c;
+  --error-dim:             rgba(255, 113, 108, 0.15);
+  --success:               #4caf50;
+
+  /* Typography */
+  --font-sans:             'Inter', system-ui, sans-serif;
+  --font-display:          'Bebas Neue', sans-serif;
+
+  /* Spacing */
+  --radius-sm:             6px;
+  --radius-md:             10px;
+  --radius-lg:             14px;
+  --radius-xl:             20px;
+
+  /* Layout */
+  --sidebar-width:         240px;
+  --header-height:         52px;
+
+  /* Transitions */
+  --transition-fast:       150ms ease;
+  --transition-med:        200ms ease;
+}
+
+/* ── Reset & Base ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body, #root {
+  height: 100%;
+  background: var(--surface-base);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--primary); text-decoration: none; }
+button { cursor: pointer; font-family: var(--font-sans); }
