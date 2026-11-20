@@ -3,7 +3,7 @@
 
 export const msalConfig = {
   auth: {
-    clientId: import.meta.env.VITE_CLIENT_ID || 'YOUR_CLIENT_ID_HERE',
+    clientId: (import.meta.env.VITE_CLIENT_ID || 'YOUR_CLIENT_ID_HERE').trim(),
     authority: 'https://login.microsoftonline.com/consumers',
     redirectUri: window.location.origin,
     postLogoutRedirectUri: window.location.origin,
@@ -24,9 +24,9 @@ export const msalConfig = {
   },
 };
 
-// Scopes: User.Read for profile info, Files.Read for OneDrive browsing
+// Scopes: User.Read for profile info, Files.ReadWrite for OneDrive browsing and cross-cloud transfers
 export const loginRequest = {
-  scopes: ['User.Read', 'Files.Read'],
+  scopes: ['User.Read', 'Files.ReadWrite'],
 };
 
 export const graphConfig = {

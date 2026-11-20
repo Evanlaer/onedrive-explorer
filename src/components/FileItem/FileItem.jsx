@@ -1,9 +1,11 @@
 import './FileItem.css';
+import { useState } from 'react';
 import { getFileIconConfig } from '../../utils/fileIcons';
 import { formatBytes, formatDate } from '../../utils/formatters';
+import { isItemFolder } from '../../api/transferService';
 import {
   FiFolder, FiFile, FiFileText, FiImage, FiVideo, FiMusic,
-  FiCode, FiArchive, FiFileMinus,
+  FiCode, FiArchive,
 } from 'react-icons/fi';
 import { BsFilePdf, BsFiletypeXlsx, BsFiletypeDocx, BsFiletypePptx } from 'react-icons/bs';
 
@@ -25,27 +27,111 @@ function FileIcon({ config }) {
   }
 }
 
-export default function FileItem({ item, onClick }) {
+export default function FileItem({
+  item,
+  cloudType,
+  canTransfer,
+  dragState,
+  onClick,
+  onDragStartItem,
+  onDragEndItem,
+  onDropOnFolder,
+  onFolderHoverChange,
+}) {
   const config = getFileIconConfig(item);
-  const isFolder = !!item.folder;
+  const isFolder = isItemFolder(item);
+  const modifiedDate = item.lastModifiedDateTime || item.modifiedTime;
+
+  const [isDragging, setIsDragging] = useState(false);
+  const [isFolderDropOver, setIsFolderDropOver] = useState(false);
+
+  const isValidFolderDropTarget =
+    isFolder && canTransfer && dragState && dragState.sourceCloud !== cloudType;
 
   const handleClick = () => {
     if (isFolder) onClick(item);
   };
 
   const handleKeyDown = (e) => {
-    if ((e.key === 'Enter' || e.key === ' ') && isFolder) onClick(item);
+    if ((e.key === 'Enter' || e.key === ' ') && isFolder) {
+      e.preventDefault();
+      onClick(item);
+    }
   };
+
+  const handleDragStart = (e) => {
+    if (!canTransfer) {
+      e.preventDefault();
+      return;
+    }
+    setIsDragging(true);
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.setData(
+      'application/x-multicloud-item',
+      JSON.stringify({ sourceCloud: cloudType, item })
+    );
+    e.dataTransfer.setData('text/plain', item.name);
+    onDragStartItem?.(cloudType, item);
+  };
+
+  const handleDragEnd = () => {
+    setIsDragging(false);
+    onDragEndItem?.();
+  };
+
+  const handleDragOver = (e) => {
+    if (!isValidFolderDropTarget) return;
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = e.shiftKey ? 'move' : 'copy';
+    if (!isFolderDropOver) {
+      setIsFolderDropOver(true);
+      onFolderHoverChange?.(item.name);
+    }
+  };
+
+  const handleDragLeave = (e) => {
+    if (!isValidFolderDropTarget) return;
+    if (!e.currentTarget.contains(e.relatedTarget)) {
+      setIsFolderDropOver(false);
+      onFolderHoverChange?.(null);
+    }
+  };
+
+  const handleDrop = (e) => {
+    if (!isValidFolderDropTarget) return;
+    e.preventDefault();
+    e.stopPropagation();
+    setIsFolderDropOver(false);
+    onFolderHoverChange?.(null);
+    onDropOnFolder?.(item, e.shiftKey, e.dataTransfer);
+  };
+
+  const classes = [
+    'file-item',
+    isFolder ? 'file-item--folder' : '',
+    canTransfer ? 'file-item--draggable' : '',
+    isDragging ? 'file-item--dragging' : '',
+    isFolderDropOver ? 'file-item--drop-target' : '',
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <div
-      className={`file-item ${isFolder ? 'file-item--folder' : ''}`}
+      className={classes}
       onClick={handleClick}
       onKeyDown={handleKeyDown}
+      draggable={canTransfer}
+      onDragStart={handleDragStart}
+      onDragEnd={handleDragEnd}
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       role={isFolder ? 'button' : 'listitem'}
       tabIndex={isFolder ? 0 : -1}
       aria-label={`${isFolder ? 'Folder' : 'File'}: ${item.name}`}
-      id={`file-item-${item.id}`}
+      id={`file-item-${cloudType}-${item.id}`}
     >
       <div className="file-item-icon">
         <FileIcon config={config} />
@@ -70,7 +156,7 @@ export default function FileItem({ item, onClick }) {
         </div>
       </div>
 
-      <div className="file-item-date">{formatDate(item.lastModifiedDateTime)}</div>
+      <div className="file-item-date">{formatDate(modifiedDate)}</div>
 
       {isFolder && (
         <div className="file-item-arrow" aria-hidden="true">›</div>

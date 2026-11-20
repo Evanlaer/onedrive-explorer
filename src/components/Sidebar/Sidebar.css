@@ -1,5 +1,4 @@
 .sidebar {
-  grid-area: sidebar;
   background: var(--surface-low);
   display: flex;
   flex-direction: column;
@@ -11,8 +10,106 @@
   z-index: 10;
 }
 
+.sidebar-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 16px 20px;
+}
+
+.sidebar-logo-icon {
+  color: var(--primary);
+  font-size: 1.25rem;
+  flex-shrink: 0;
+}
+
+.sidebar-logo-text {
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--text-primary);
+  letter-spacing: 0.01em;
+}
+
+.sidebar-nav-label {
+  padding: 0 16px 8px;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.sidebar-status-empty {
+  padding: 0 16px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
 .sidebar-section {
-  padding-bottom: 24px;
+  padding-bottom: 20px;
+}
+
+.sidebar-transfer-section {
+  border-top: 1px solid var(--outline-variant);
+  padding-top: 16px;
+}
+
+.transfer-mode-toggle {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin: 0 12px;
+  padding: 4px;
+  background: var(--surface-base);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--outline-variant);
+}
+
+.transfer-mode-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 0.75rem;
+  font-weight: 600;
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.transfer-mode-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-high);
+}
+
+.transfer-mode-btn--active-copy {
+  background: var(--primary-container);
+  color: #fff;
+}
+
+.transfer-mode-btn--active-copy:hover {
+  background: var(--primary-container);
+  color: #fff;
+}
+
+.transfer-mode-btn--active-move {
+  background: #c87d14;
+  color: #fff;
+}
+
+.transfer-mode-btn--active-move:hover {
+  background: #c87d14;
+  color: #fff;
+}
+
+.sidebar-transfer-hint {
+  margin: 10px 16px 0;
+  font-size: 0.7rem;
+  line-height: 1.45;
+  color: var(--text-muted);
 }
 
 .sidebar-user {

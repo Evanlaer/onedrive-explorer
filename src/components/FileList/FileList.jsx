@@ -19,7 +19,19 @@ function LoadingSkeleton() {
   );
 }
 
-export default function FileList({ items, loading, error, onFolderClick }) {
+export default function FileList({
+  items,
+  loading,
+  error,
+  cloudType,
+  canTransfer,
+  dragState,
+  onFolderClick,
+  onDragStartItem,
+  onDragEndItem,
+  onDropOnFolder,
+  onFolderHoverChange,
+}) {
   if (loading) return <LoadingSkeleton />;
 
   if (error) {
@@ -36,7 +48,11 @@ export default function FileList({ items, loading, error, onFolderClick }) {
       <div className="filelist-empty">
         <FiFolder size={40} style={{ color: 'var(--text-muted)', marginBottom: 12 }} />
         <p className="filelist-empty-title">This folder is empty</p>
-        <p className="filelist-empty-sub">No files or folders found here.</p>
+        <p className="filelist-empty-sub">
+          {canTransfer
+            ? 'Drop files or folders from the other cloud here.'
+            : 'No files or folders found here.'}
+        </p>
       </div>
     );
   }
@@ -53,7 +69,14 @@ export default function FileList({ items, loading, error, onFolderClick }) {
           <FileItem
             key={item.id}
             item={item}
+            cloudType={cloudType}
+            canTransfer={canTransfer}
+            dragState={dragState}
             onClick={(folder) => onFolderClick(folder.id, folder.name)}
+            onDragStartItem={onDragStartItem}
+            onDragEndItem={onDragEndItem}
+            onDropOnFolder={onDropOnFolder}
+            onFolderHoverChange={onFolderHoverChange}
           />
         ))}
       </div>

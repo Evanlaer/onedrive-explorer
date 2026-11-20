@@ -6,7 +6,7 @@ import { getRootItems, getFolderChildren } from '../api/graphService';
  * Fetches and returns the items (files + folders) for a given folder ID.
  * Pass null or undefined to load the OneDrive root.
  */
-export function useDriveItems(folderId) {
+export function useDriveItems(folderId, refreshKey = 0) {
   const { instance } = useMsal();
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,7 +37,7 @@ export function useDriveItems(folderId) {
 
     fetch();
     return () => { cancelled = true; };
-  }, [folderId, instance]);
+  }, [folderId, instance, refreshKey]);
 
   return { items, loading, error };
 }

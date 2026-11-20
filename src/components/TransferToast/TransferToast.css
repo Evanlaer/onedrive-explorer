@@ -1,0 +1,206 @@
+.transfer-toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  width: 370px;
+  max-width: calc(100vw - 40px);
+  max-height: 380px;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.55);
+  z-index: 1000;
+  overflow: hidden;
+  backdrop-filter: blur(12px);
+}
+
+.transfer-toast-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 11px 14px;
+  background: var(--surface-highest);
+  border-bottom: 1px solid var(--outline-variant);
+}
+
+.transfer-toast-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: 0.02em;
+}
+
+.transfer-clear-btn {
+  background: transparent;
+  border: none;
+  color: var(--primary);
+  font-size: 0.72rem;
+  font-weight: 500;
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast);
+}
+
+.transfer-clear-btn:hover {
+  background: var(--primary-glow);
+}
+
+.transfer-toast-list {
+  overflow-y: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.transfer-row {
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  background: var(--surface-default);
+  border: 1px solid var(--outline-variant);
+}
+
+.transfer-row--success {
+  border-color: rgba(76, 175, 80, 0.35);
+}
+
+.transfer-row--warning {
+  border-color: rgba(245, 166, 35, 0.45);
+}
+
+.transfer-row--error {
+  border-color: rgba(255, 113, 108, 0.45);
+}
+
+.transfer-row-top {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.transfer-status-icon {
+  display: inline-flex;
+  flex-shrink: 0;
+}
+
+.transfer-row--active .transfer-status-icon { color: var(--primary); }
+.transfer-row--success .transfer-status-icon { color: var(--success); }
+.transfer-row--warning .transfer-status-icon { color: #f5a623; }
+.transfer-row--error .transfer-status-icon { color: var(--error); }
+
+.transfer-item-type-icon {
+  display: inline-flex;
+  color: var(--text-muted);
+  flex-shrink: 0;
+}
+
+.transfer-item-name {
+  flex: 1;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-mode-badge {
+  font-size: 0.625rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  padding: 2px 6px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.transfer-mode-badge--copy {
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.transfer-mode-badge--move {
+  background: rgba(245, 166, 35, 0.16);
+  color: #f5b952;
+}
+
+.transfer-dismiss-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+
+.transfer-dismiss-btn:hover {
+  color: var(--text-primary);
+  background: var(--surface-bright);
+}
+
+.transfer-route {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 4px;
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.transfer-progress-track {
+  margin-top: 8px;
+  height: 4px;
+  border-radius: 999px;
+  background: var(--surface-bright);
+  overflow: hidden;
+}
+
+.transfer-progress-fill {
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--primary-container), var(--primary));
+  transition: width 220ms ease;
+}
+
+.transfer-detail {
+  margin-top: 5px;
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+.transfer-warnings {
+  margin-top: 6px;
+  padding-left: 16px;
+  font-size: 0.7rem;
+  color: #f5b952;
+}
+
+.transfer-error-msg {
+  margin-top: 6px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--error-dim);
+  color: var(--error);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+
+.transfer-spin {
+  animation: transfer-spin 1s linear infinite;
+}
+
+@keyframes transfer-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

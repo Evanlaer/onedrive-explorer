@@ -25,24 +25,30 @@ msalInstance.initialize().then(() => {
   });
 
   // Handle the redirect response (called after Microsoft redirects back)
-  msalInstance.handleRedirectPromise().then((response) => {
-    // If returning from a redirect login, the account is in the response
-    if (response?.account) {
-      msalInstance.setActiveAccount(response.account);
-    } else {
-      // Fallback: pick up any cached account from a previous session
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
-        msalInstance.setActiveAccount(accounts[0]);
+  msalInstance
+    .handleRedirectPromise()
+    .then((response) => {
+      // If returning from a redirect login, the account is in the response
+      if (response?.account) {
+        msalInstance.setActiveAccount(response.account);
+      } else {
+        // Fallback: pick up any cached account from a previous session
+        const accounts = msalInstance.getAllAccounts();
+        if (accounts.length > 0) {
+          msalInstance.setActiveAccount(accounts[0]);
+        }
       }
-    }
-
-    createRoot(document.getElementById('root')).render(
-      <StrictMode>
-        <MsalProvider instance={msalInstance}>
-          <App />
-        </MsalProvider>
-      </StrictMode>
-    );
-  });
+    })
+    .catch((err) => {
+      console.error('[MSAL] Redirect handling failed:', err);
+    })
+    .finally(() => {
+      createRoot(document.getElementById('root')).render(
+        <StrictMode>
+          <MsalProvider instance={msalInstance}>
+            <App />
+          </MsalProvider>
+        </StrictMode>
+      );
+    });
 });

@@ -3,10 +3,11 @@
  * e.g. 1536 → "1.5 KB"
  */
 export function formatBytes(bytes) {
-  if (bytes == null || bytes === 0) return '—';
+  const num = Number(bytes);
+  if (bytes == null || Number.isNaN(num) || num === 0) return '—';
   const units = ['B', 'KB', 'MB', 'GB', 'TB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(1024));
-  return `${(bytes / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
+  const i = Math.min(Math.floor(Math.log(num) / Math.log(1024)), units.length - 1);
+  return `${(num / Math.pow(1024, i)).toFixed(1)} ${units[i]}`;
 }
 
 /**
@@ -21,7 +22,7 @@ export function formatDate(isoString) {
       month: 'short',
       day: 'numeric',
     });
-  } catch (err) {
+  } catch {
     return '—';
   }
 }

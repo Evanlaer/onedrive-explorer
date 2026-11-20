@@ -4,7 +4,7 @@
  */
 
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || '';
-const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
+const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
 let tokenClient;
 
@@ -13,12 +13,12 @@ let tokenClient;
  * Should be called once after the script is loaded.
  */
 export function initGoogleAuth(onTokenReceived) {
-  if (typeof google === 'undefined') {
+  if (typeof window.google === 'undefined') {
     console.error('Google GIS script not loaded');
     return;
   }
 
-  tokenClient = google.accounts.oauth2.initTokenClient({
+  tokenClient = window.google.accounts.oauth2.initTokenClient({
     client_id: GOOGLE_CLIENT_ID,
     scope: DRIVE_SCOPE,
     callback: (response) => {
@@ -49,8 +49,8 @@ export function loginGoogle() {
  * We can also revoke the token if needed.
  */
 export function logoutGoogle(accessToken) {
-  if (accessToken) {
-    google.accounts.oauth2.revoke(accessToken, () => {
+  if (accessToken && window.google?.accounts?.oauth2) {
+    window.google.accounts.oauth2.revoke(accessToken, () => {
       console.log('Google token revoked');
     });
   }

@@ -1,16 +1,14 @@
 import './Sidebar.css';
-import { useMsal } from '@azure/msal-react';
-import { logout } from '../../auth/authService';
-import { useDriveItems } from '../../hooks/useDriveItems';
-import {
-  FiFolder, FiLogOut, FiCloud, FiHardDrive,
-} from 'react-icons/fi';
+import { FiCloud, FiCopy, FiMove } from 'react-icons/fi';
 
-export default function Sidebar({ 
-  userProfile, 
-  googleProfile, 
-  onLogoutOneDrive, 
-  onLogoutGoogle 
+export default function Sidebar({
+  userProfile,
+  googleProfile,
+  onLogoutOneDrive,
+  onLogoutGoogle,
+  transferMode = 'copy',
+  onTransferModeChange,
+  canTransfer = false,
 }) {
   const initials = userProfile?.displayName
     ? userProfile.displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
@@ -31,39 +29,83 @@ export default function Sidebar({
       {/* OneDrive Section */}
       <div className="sidebar-section">
         <p className="sidebar-nav-label">OneDrive</p>
-        {userProfile && (
+        {userProfile ? (
           <div className="sidebar-user">
             <div className="sidebar-user-avatar">{initials}</div>
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">{userProfile.displayName}</span>
-              <button 
-                className="sidebar-user-logout" 
+              <button
+                className="sidebar-user-logout"
                 onClick={onLogoutOneDrive}
               >
                 Sign Out
               </button>
             </div>
           </div>
+        ) : (
+          <p className="sidebar-status-empty">Not connected</p>
         )}
       </div>
 
       {/* Google Drive Section */}
       <div className="sidebar-section">
         <p className="sidebar-nav-label">Google Drive</p>
-        {googleProfile && (
+        {googleProfile ? (
           <div className="sidebar-user">
             <div className="sidebar-user-avatar sidebar-user-avatar--google">{gInitials}</div>
             <div className="sidebar-user-info">
               <span className="sidebar-user-name">{googleProfile.displayName}</span>
-              <button 
-                className="sidebar-user-logout" 
+              <button
+                className="sidebar-user-logout"
                 onClick={onLogoutGoogle}
               >
                 Sign Out
               </button>
             </div>
           </div>
+        ) : (
+          <p className="sidebar-status-empty">Not connected</p>
         )}
+      </div>
+
+      {/* Cross-Cloud Transfer Mode */}
+      <div className="sidebar-section sidebar-transfer-section">
+        <p className="sidebar-nav-label">Drag &amp; Drop Mode</p>
+        <div
+          className="transfer-mode-toggle"
+          role="radiogroup"
+          aria-label="Default drag and drop transfer mode"
+        >
+          <button
+            type="button"
+            role="radio"
+            aria-checked={transferMode === 'copy'}
+            className={`transfer-mode-btn ${
+              transferMode === 'copy' ? 'transfer-mode-btn--active-copy' : ''
+            }`}
+            onClick={() => onTransferModeChange?.('copy')}
+          >
+            <FiCopy size={13} />
+            <span>Copy</span>
+          </button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={transferMode === 'move'}
+            className={`transfer-mode-btn ${
+              transferMode === 'move' ? 'transfer-mode-btn--active-move' : ''
+            }`}
+            onClick={() => onTransferModeChange?.('move')}
+          >
+            <FiMove size={13} />
+            <span>Move</span>
+          </button>
+        </div>
+        <p className="sidebar-transfer-hint">
+          {canTransfer
+            ? 'Drag files or folders across panes. Hold Shift while dropping to switch Copy / Move.'
+            : 'Sign in to both clouds to drag & drop files or folders between them.'}
+        </p>
       </div>
 
       <div className="sidebar-footer">
