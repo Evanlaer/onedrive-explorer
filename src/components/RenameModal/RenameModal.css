@@ -1,0 +1,176 @@
+.rename-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(4, 8, 18, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  z-index: 2000;
+}
+
+.rename-card {
+  width: 440px;
+  max-width: 100%;
+  background: var(--surface-high);
+  border: 1px solid var(--outline-variant);
+  border-radius: var(--radius-lg);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.6);
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.rename-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.rename-icon-wrap {
+  width: 36px;
+  height: 36px;
+  border-radius: var(--radius-md);
+  background: var(--primary-glow);
+  color: var(--primary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.rename-title-wrap {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+
+.rename-title {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.rename-cloud-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.rename-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  transition: background var(--transition-fast), color var(--transition-fast);
+}
+
+.rename-close-btn:hover:not(:disabled) {
+  background: var(--surface-bright);
+  color: var(--text-primary);
+}
+
+.rename-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rename-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.rename-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-default);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color var(--transition-fast), box-shadow var(--transition-fast);
+}
+
+.rename-input:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-glow);
+}
+
+.rename-input--error {
+  border-color: var(--error);
+}
+
+.rename-input--error:focus {
+  border-color: var(--error);
+  box-shadow: 0 0 0 2px var(--error-dim);
+}
+
+.rename-error {
+  font-size: 0.75rem;
+  color: var(--error);
+  line-height: 1.4;
+}
+
+.rename-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.rename-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 16px;
+  border-radius: var(--radius-sm);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+  transition: background var(--transition-fast), opacity var(--transition-fast);
+}
+
+.rename-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.rename-btn--cancel {
+  background: var(--surface-bright);
+  color: var(--text-primary);
+  border-color: var(--outline-variant);
+}
+
+.rename-btn--cancel:hover:not(:disabled) {
+  background: var(--surface-highest);
+}
+
+.rename-btn--primary {
+  background: var(--primary-container);
+  color: #fff;
+}
+
+.rename-btn--primary:hover:not(:disabled) {
+  background: #005a9e;
+}
+
+.rename-spin {
+  animation: rename-spin 1s linear infinite;
+}
+
+@keyframes rename-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

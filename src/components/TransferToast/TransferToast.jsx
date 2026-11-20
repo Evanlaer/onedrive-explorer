@@ -6,6 +6,7 @@ import {
   FiX,
   FiArrowRight,
   FiLoader,
+  FiClock,
   FiFolder,
   FiFile,
 } from 'react-icons/fi';
@@ -19,17 +20,20 @@ export default function TransferToast({ transfers, onDismiss, onClearCompleted }
   if (!transfers || transfers.length === 0) return null;
 
   const activeCount = transfers.filter((t) => t.status === 'active').length;
-  const hasFinished = transfers.some((t) => t.status !== 'active');
+  const queuedCount = transfers.filter((t) => t.status === 'queued').length;
+  const inFlightCount = activeCount + queuedCount;
+  const hasFinished = transfers.some((t) => t.status !== 'active' && t.status !== 'queued');
 
   return (
     <section className="transfer-toast" aria-label="Cross-cloud transfers" aria-live="polite">
       <div className="transfer-toast-header">
         <div className="transfer-toast-title">
-          {activeCount > 0 ? (
+          {inFlightCount > 0 ? (
             <>
               <FiLoader className="transfer-spin" size={14} />
               <span>
-                Transferring {activeCount} item{activeCount === 1 ? '' : 's'}…
+                Transferring {activeCount}
+                {queuedCount > 0 ? ` (${queuedCount} queued)` : ` item${activeCount === 1 ? '' : 's'}`}…
               </span>
             </>
           ) : (
@@ -55,6 +59,7 @@ export default function TransferToast({ transfers, onDismiss, onClearCompleted }
           >
             <div className="transfer-row-top">
               <span className="transfer-status-icon" aria-hidden="true">
+                {t.status === 'queued' && <FiClock size={15} />}
                 {t.status === 'active' && <FiLoader className="transfer-spin" size={15} />}
                 {t.status === 'success' && <FiCheckCircle size={15} />}
                 {t.status === 'warning' && <FiAlertTriangle size={15} />}
@@ -70,10 +75,16 @@ export default function TransferToast({ transfers, onDismiss, onClearCompleted }
               </span>
 
               <span className={`transfer-mode-badge transfer-mode-badge--${t.mode}`}>
-                {t.mode === 'move' ? 'Move' : 'Copy'}
+                {t.mode === 'delete'
+                  ? 'Delete'
+                  : t.mode === 'rename'
+                  ? 'Rename'
+                  : t.mode === 'move'
+                  ? 'Move'
+                  : 'Copy'}
               </span>
 
-              {t.status !== 'active' && (
+              {t.status !== 'active' && t.status !== 'queued' && (
                 <button
                   type="button"
                   className="transfer-dismiss-btn"
@@ -86,12 +97,18 @@ export default function TransferToast({ transfers, onDismiss, onClearCompleted }
             </div>
 
             <div className="transfer-route">
-              <span>{CLOUD_LABEL[t.sourceCloud]}</span>
-              <FiArrowRight size={11} />
-              <span>
-                {CLOUD_LABEL[t.targetCloud]}
-                {t.targetFolderName ? ` / ${t.targetFolderName}` : ''}
-              </span>
+              {t.mode === 'delete' || t.mode === 'rename' ? (
+                <span>{CLOUD_LABEL[t.sourceCloud]}</span>
+              ) : (
+                <>
+                  <span>{CLOUD_LABEL[t.sourceCloud]}</span>
+                  <FiArrowRight size={11} />
+                  <span>
+                    {CLOUD_LABEL[t.targetCloud]}
+                    {t.targetFolderName ? ` / ${t.targetFolderName}` : ''}
+                  </span>
+                </>
+              )}
             </div>
 
             {t.status === 'active' && (

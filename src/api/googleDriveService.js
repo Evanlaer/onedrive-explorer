@@ -39,7 +39,14 @@ async function buildGoogleError(response, action) {
   } catch {
     // ignore non-JSON body
   }
-  if (response.status === 403 || response.status === 401) {
+  if (response.status === 401) {
+    const err = new Error(
+      'Your Google Drive session expired (tokens last 1 hour). Please sign in again.'
+    );
+    err.code = 'AUTH_EXPIRED';
+    return err;
+  }
+  if (response.status === 403) {
     return new Error(
       `Google Drive permission denied while ${action}. Please sign out of Google Drive and sign back in to grant read/write access.`
     );
@@ -283,6 +290,34 @@ export async function createGoogleDriveFolder(accessToken, parentFolderId = 'roo
 
   if (!response.ok) {
     throw await buildGoogleError(response, `creating folder "${folderName}"`);
+  }
+
+  return response.json();
+}
+
+/**
+ * Renames a file or folder in Google Drive.
+ */
+export async function renameGoogleDriveItem(accessToken, itemId, newName) {
+  const trimmed = (newName || '').trim();
+  if (!trimmed) {
+    throw new Error('Name cannot be empty.');
+  }
+
+  const response = await fetch(
+    `${DRIVE_BASE}/files/${itemId}?fields=id,name,mimeType,size,modifiedTime`,
+    {
+      method: 'PATCH',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ name: trimmed }),
+    }
+  );
+
+  if (!response.ok) {
+    throw await buildGoogleError(response, `renaming item to "${trimmed}"`);
   }
 
   return response.json();

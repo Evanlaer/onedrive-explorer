@@ -5,6 +5,7 @@ import {
   downloadOneDriveFile,
   uploadOneDriveFile,
   createOneDriveFolder,
+  renameOneDriveItem,
   deleteOneDriveItem,
 } from './graphService';
 import {
@@ -13,6 +14,7 @@ import {
   downloadGoogleDriveFile,
   uploadGoogleDriveFile,
   createGoogleDriveFolder,
+  renameGoogleDriveItem,
   deleteGoogleDriveItem,
 } from './googleDriveService';
 
@@ -74,6 +76,23 @@ async function deleteItem(cloud, itemId, msalInstance, googleToken) {
     return deleteOneDriveItem(msalInstance, itemId);
   }
   return deleteGoogleDriveItem(googleToken, itemId);
+}
+
+/**
+ * Deletes a single file or folder in OneDrive (Recycle Bin) or Google Drive (Trash).
+ */
+export async function deleteCloudItem({ item, cloud, msalInstance, googleToken }) {
+  await deleteItem(cloud, item.id, msalInstance, googleToken);
+}
+
+/**
+ * Renames a single file or folder in OneDrive or Google Drive.
+ */
+export async function renameCloudItem({ item, cloud, newName, msalInstance, googleToken }) {
+  if (cloud === 'onedrive') {
+    return renameOneDriveItem(msalInstance, item.id, newName);
+  }
+  return renameGoogleDriveItem(googleToken, item.id, newName);
 }
 
 /**

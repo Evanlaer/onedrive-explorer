@@ -88,6 +88,11 @@
   flex-shrink: 0;
 }
 
+.transfer-row--queued {
+  opacity: 0.8;
+}
+
+.transfer-row--queued .transfer-status-icon { color: var(--text-muted); }
 .transfer-row--active .transfer-status-icon { color: var(--primary); }
 .transfer-row--success .transfer-status-icon { color: var(--success); }
 .transfer-row--warning .transfer-status-icon { color: #f5a623; }
@@ -127,6 +132,16 @@
 .transfer-mode-badge--move {
   background: rgba(245, 166, 35, 0.16);
   color: #f5b952;
+}
+
+.transfer-mode-badge--delete {
+  background: var(--error-dim);
+  color: var(--error);
+}
+
+.transfer-mode-badge--rename {
+  background: rgba(156, 124, 255, 0.18);
+  color: #c2a8ff;
 }
 
 .transfer-dismiss-btn {

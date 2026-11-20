@@ -253,6 +253,35 @@ export async function createOneDriveFolder(msalInstance, parentFolderId, folderN
 }
 
 /**
+ * Renames a file or folder in OneDrive.
+ */
+export async function renameOneDriveItem(msalInstance, itemId, newName) {
+  const trimmed = (newName || '').trim();
+  if (!trimmed) {
+    throw new Error('Name cannot be empty.');
+  }
+  if (/[\\/:*?"<>|]/.test(trimmed)) {
+    throw new Error('OneDrive names cannot contain \\ / : * ? " < > |');
+  }
+
+  const token = await getAccessToken(msalInstance);
+  const response = await fetch(`${GRAPH_BASE}/me/drive/items/${itemId}`, {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name: trimmed }),
+  });
+
+  if (!response.ok) {
+    throw await buildGraphError(response, `renaming item to "${trimmed}"`);
+  }
+
+  return response.json();
+}
+
+/**
  * Deletes an item in OneDrive (moves it to OneDrive Recycle Bin).
  */
 export async function deleteOneDriveItem(msalInstance, itemId) {

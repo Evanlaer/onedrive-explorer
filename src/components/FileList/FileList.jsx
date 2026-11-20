@@ -1,6 +1,6 @@
 import './FileList.css';
 import FileItem from '../FileItem/FileItem';
-import { FiFolder } from 'react-icons/fi';
+import { FiFolder, FiCheck, FiMinus } from 'react-icons/fi';
 
 function LoadingSkeleton() {
   return (
@@ -26,6 +26,10 @@ export default function FileList({
   cloudType,
   canTransfer,
   dragState,
+  selectedIds,
+  onToggleSelect,
+  onRowSelect,
+  onToggleSelectAll,
   onFolderClick,
   onDragStartItem,
   onDragEndItem,
@@ -57,12 +61,33 @@ export default function FileList({
     );
   }
 
+  const selectedCount = selectedIds ? selectedIds.size : 0;
+  const allSelected = items.length > 0 && selectedCount === items.length;
+  const someSelected = selectedCount > 0 && selectedCount < items.length;
+  const hasAnySelection = selectedCount > 0;
+
+  const draggedIdSet =
+    dragState && dragState.sourceCloud === cloudType
+      ? new Set((dragState.items || []).map((it) => it.id))
+      : null;
+
   return (
     <div className="filelist" role="list" aria-label="Files and folders">
       <div className="filelist-header">
-        <span>Name</span>
-        <span />
-        <span>Modified</span>
+        <button
+          type="button"
+          className={`filelist-select-all ${
+            allSelected || someSelected ? 'filelist-select-all--active' : ''
+          }`}
+          onClick={onToggleSelectAll}
+          aria-label={allSelected ? 'Deselect all items' : 'Select all items'}
+          title={allSelected ? 'Deselect all' : 'Select all'}
+        >
+          {allSelected && <FiCheck size={12} strokeWidth={3} />}
+          {someSelected && <FiMinus size={12} strokeWidth={3} />}
+        </button>
+        <span className="filelist-header-name">Name</span>
+        <span className="filelist-header-date">Modified</span>
       </div>
       <div className="filelist-items">
         {items.map((item) => (
@@ -72,7 +97,12 @@ export default function FileList({
             cloudType={cloudType}
             canTransfer={canTransfer}
             dragState={dragState}
+            isSelected={selectedIds ? selectedIds.has(item.id) : false}
+            hasAnySelection={hasAnySelection}
+            isBeingDragged={draggedIdSet ? draggedIdSet.has(item.id) : false}
             onClick={(folder) => onFolderClick(folder.id, folder.name)}
+            onToggleSelect={onToggleSelect}
+            onRowSelect={onRowSelect}
             onDragStartItem={onDragStartItem}
             onDragEndItem={onDragEndItem}
             onDropOnFolder={onDropOnFolder}

@@ -5,7 +5,7 @@ import { formatBytes, formatDate } from '../../utils/formatters';
 import { isItemFolder } from '../../api/transferService';
 import {
   FiFolder, FiFile, FiFileText, FiImage, FiVideo, FiMusic,
-  FiCode, FiArchive,
+  FiCode, FiArchive, FiCheck,
 } from 'react-icons/fi';
 import { BsFilePdf, BsFiletypeXlsx, BsFiletypeDocx, BsFiletypePptx } from 'react-icons/bs';
 
@@ -32,7 +32,12 @@ export default function FileItem({
   cloudType,
   canTransfer,
   dragState,
+  isSelected = false,
+  hasAnySelection = false,
+  isBeingDragged = false,
   onClick,
+  onToggleSelect,
+  onRowSelect,
   onDragStartItem,
   onDragEndItem,
   onDropOnFolder,
@@ -42,14 +47,29 @@ export default function FileItem({
   const isFolder = isItemFolder(item);
   const modifiedDate = item.lastModifiedDateTime || item.modifiedTime;
 
-  const [isDragging, setIsDragging] = useState(false);
   const [isFolderDropOver, setIsFolderDropOver] = useState(false);
 
   const isValidFolderDropTarget =
     isFolder && canTransfer && dragState && dragState.sourceCloud !== cloudType;
 
-  const handleClick = () => {
-    if (isFolder) onClick(item);
+  const handleRowClick = (e) => {
+    // Modifier click (Ctrl/Cmd/Shift) selects both files and folders without navigating
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
+      e.preventDefault();
+      onRowSelect?.(item, e);
+      return;
+    }
+
+    if (isFolder) {
+      onClick(item);
+    } else {
+      onRowSelect?.(item, e);
+    }
+  };
+
+  const handleCheckboxClick = (e) => {
+    e.stopPropagation();
+    onToggleSelect?.(item, e);
   };
 
   const handleKeyDown = (e) => {
@@ -64,18 +84,10 @@ export default function FileItem({
       e.preventDefault();
       return;
     }
-    setIsDragging(true);
-    e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData(
-      'application/x-multicloud-item',
-      JSON.stringify({ sourceCloud: cloudType, item })
-    );
-    e.dataTransfer.setData('text/plain', item.name);
-    onDragStartItem?.(cloudType, item);
+    onDragStartItem?.(item, e);
   };
 
   const handleDragEnd = () => {
-    setIsDragging(false);
     onDragEndItem?.();
   };
 
@@ -111,7 +123,9 @@ export default function FileItem({
     'file-item',
     isFolder ? 'file-item--folder' : '',
     canTransfer ? 'file-item--draggable' : '',
-    isDragging ? 'file-item--dragging' : '',
+    isSelected ? 'file-item--selected' : '',
+    hasAnySelection ? 'file-item--selection-mode' : '',
+    isBeingDragged ? 'file-item--dragging' : '',
     isFolderDropOver ? 'file-item--drop-target' : '',
   ]
     .filter(Boolean)
@@ -120,7 +134,7 @@ export default function FileItem({
   return (
     <div
       className={classes}
-      onClick={handleClick}
+      onClick={handleRowClick}
       onKeyDown={handleKeyDown}
       draggable={canTransfer}
       onDragStart={handleDragStart}
@@ -129,10 +143,22 @@ export default function FileItem({
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
       role={isFolder ? 'button' : 'listitem'}
-      tabIndex={isFolder ? 0 : -1}
+      aria-selected={isSelected}
+      tabIndex={0}
       aria-label={`${isFolder ? 'Folder' : 'File'}: ${item.name}`}
       id={`file-item-${cloudType}-${item.id}`}
     >
+      <button
+        type="button"
+        className={`file-item-checkbox ${isSelected ? 'file-item-checkbox--checked' : ''}`}
+        onClick={handleCheckboxClick}
+        aria-label={isSelected ? `Deselect ${item.name}` : `Select ${item.name}`}
+        aria-pressed={isSelected}
+        tabIndex={-1}
+      >
+        {isSelected && <FiCheck size={12} strokeWidth={3} />}
+      </button>
+
       <div className="file-item-icon">
         <FileIcon config={config} />
       </div>

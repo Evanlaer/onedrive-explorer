@@ -5,7 +5,7 @@ import { getDriveItems } from '../api/googleDriveService';
  * Hook to fetch and manage files/folders for Google Drive.
  * Requires a valid Google access token.
  */
-export function useGoogleDriveItems(accessToken, folderId = 'root', refreshKey = 0) {
+export function useGoogleDriveItems(accessToken, folderId = 'root', refreshKey = 0, onAuthExpired) {
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -25,7 +25,13 @@ export function useGoogleDriveItems(accessToken, folderId = 'root', refreshKey =
         const data = await getDriveItems(accessToken, folderId);
         if (!cancelled) setItems(data);
       } catch (err) {
-        if (!cancelled) setError(err.message || 'Failed to load files from Google Drive');
+        if (!cancelled) {
+          if (err?.code === 'AUTH_EXPIRED') {
+            onAuthExpired?.();
+            return;
+          }
+          setError(err.message || 'Failed to load files from Google Drive');
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -33,7 +39,7 @@ export function useGoogleDriveItems(accessToken, folderId = 'root', refreshKey =
 
     fetch();
     return () => { cancelled = true; };
-  }, [accessToken, folderId, refreshKey]);
+  }, [accessToken, folderId, refreshKey, onAuthExpired]);
 
   return { items, loading, error };
 }

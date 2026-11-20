@@ -1,14 +1,39 @@
 import './CloudPane.css';
-import { useState } from 'react';
-import { FiRefreshCw, FiCopy, FiMove } from 'react-icons/fi';
+import { useState, useMemo, useEffect } from 'react';
+import { FiRefreshCw, FiCopy, FiMove, FiX, FiTrash2, FiEdit2 } from 'react-icons/fi';
 import Header from '../Header/Header';
 import FileList from '../FileList/FileList';
 import { useDriveItems } from '../../hooks/useDriveItems';
 import { useGoogleDriveItems } from '../../hooks/useGoogleDriveItems';
 
 /**
+ * Creates a clean floating badge used as the custom OS drag ghost when dragging multiple items.
+ */
+function createMultiDragBadge(count) {
+  const el = document.createElement('div');
+  el.textContent = `${count} items`;
+  Object.assign(el.style, {
+    position: 'fixed',
+    top: '-1000px',
+    left: '-1000px',
+    padding: '7px 14px',
+    borderRadius: '999px',
+    background: '#0078d4',
+    color: '#ffffff',
+    fontFamily: 'Inter, system-ui, sans-serif',
+    fontSize: '12px',
+    fontWeight: '700',
+    boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+    pointerEvents: 'none',
+    zIndex: '9999',
+  });
+  document.body.appendChild(el);
+  return el;
+}
+
+/**
  * CloudPane — A self-contained explorer pane for either OneDrive or Google Drive,
- * supporting cross-cloud drag-and-drop Copy and Move.
+ * supporting multi-selection and cross-cloud drag-and-drop Copy and Move.
  */
 export default function CloudPane({
   type,
@@ -21,12 +46,17 @@ export default function CloudPane({
   canTransfer = false,
   dragState = null,
   transferMode = 'copy',
-  onDragStartItem,
-  onDragEndItem,
-  onDropItem,
+  onDragStartItems,
+  onDragEndItems,
+  onDropItems,
+  onRequestDelete,
+  onRequestRename,
+  onAuthExpired,
 }) {
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
+  const [selectedIds, setSelectedIds] = useState(() => new Set());
+  const [lastSelectedId, setLastSelectedId] = useState(null);
   const [isPaneDropOver, setIsPaneDropOver] = useState(false);
   const [hoveredFolderName, setHoveredFolderName] = useState(null);
   const [shiftHeld, setShiftHeld] = useState(false);
@@ -39,10 +69,37 @@ export default function CloudPane({
   const googleDriveData = useGoogleDriveItems(
     type === 'google' && isAuthenticated ? accessToken : null,
     currentFolderId || 'root',
-    refreshKey
+    refreshKey,
+    onAuthExpired
   );
 
   const { items, loading, error } = type === 'onedrive' ? oneDriveData : googleDriveData;
+
+  // Keep only IDs that actually exist in the current directory listing
+  const activeSelectedIds = useMemo(() => {
+    if (selectedIds.size === 0 || items.length === 0) return new Set();
+    const validIds = new Set(items.map((it) => it.id));
+    const filtered = new Set();
+    selectedIds.forEach((id) => {
+      if (validIds.has(id)) filtered.add(id);
+    });
+    return filtered;
+  }, [selectedIds, items]);
+
+  const selectedCount = activeSelectedIds.size;
+
+  // Clear selection on Escape key
+  useEffect(() => {
+    if (selectedCount === 0) return;
+    const onKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedIds(new Set());
+        setLastSelectedId(null);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [selectedCount]);
 
   const isValidDropPane =
     isAuthenticated && canTransfer && dragState && dragState.sourceCloud !== type;
@@ -60,12 +117,19 @@ export default function CloudPane({
   const currentFolderLabel =
     breadcrumbs.length > 0 ? breadcrumbs[breadcrumbs.length - 1].name : 'Root';
 
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    setLastSelectedId(null);
+  };
+
   const handleFolderClick = (id, name) => {
+    clearSelection();
     setCurrentFolderId(id);
     setBreadcrumbs((prev) => [...prev, { id, name }]);
   };
 
   const handleBreadcrumbClick = (index) => {
+    clearSelection();
     if (index === 0) {
       setCurrentFolderId(null);
       setBreadcrumbs([]);
@@ -76,10 +140,97 @@ export default function CloudPane({
     }
   };
 
+  const selectRangeTo = (targetId) => {
+    const startIdx = items.findIndex((it) => it.id === lastSelectedId);
+    const endIdx = items.findIndex((it) => it.id === targetId);
+    if (startIdx === -1 || endIdx === -1) {
+      setSelectedIds(new Set([targetId]));
+      setLastSelectedId(targetId);
+      return;
+    }
+    const [lo, hi] = startIdx < endIdx ? [startIdx, endIdx] : [endIdx, startIdx];
+    const next = new Set(activeSelectedIds);
+    for (let i = lo; i <= hi; i += 1) {
+      next.add(items[i].id);
+    }
+    setSelectedIds(next);
+  };
+
+  const handleToggleSelect = (item, e) => {
+    if (e?.shiftKey && lastSelectedId) {
+      selectRangeTo(item.id);
+      return;
+    }
+    const next = new Set(activeSelectedIds);
+    if (next.has(item.id)) {
+      next.delete(item.id);
+    } else {
+      next.add(item.id);
+    }
+    setSelectedIds(next);
+    setLastSelectedId(item.id);
+  };
+
+  const handleRowSelect = (item, e) => {
+    if (e?.shiftKey && lastSelectedId) {
+      selectRangeTo(item.id);
+      return;
+    }
+    if (e?.ctrlKey || e?.metaKey) {
+      handleToggleSelect(item, e);
+      return;
+    }
+    // Plain click on a file: toggle if it's the only selected item, else select it
+    if (activeSelectedIds.size === 1 && activeSelectedIds.has(item.id)) {
+      clearSelection();
+    } else {
+      setSelectedIds(new Set([item.id]));
+      setLastSelectedId(item.id);
+    }
+  };
+
+  const handleToggleSelectAll = () => {
+    if (items.length === 0) return;
+    if (activeSelectedIds.size === items.length) {
+      clearSelection();
+    } else {
+      setSelectedIds(new Set(items.map((it) => it.id)));
+      setLastSelectedId(items[0].id);
+    }
+  };
+
+  const handleDragStartItem = (item, e) => {
+    const itemsToDrag = activeSelectedIds.has(item.id)
+      ? items.filter((it) => activeSelectedIds.has(it.id))
+      : [item];
+
+    e.dataTransfer.effectAllowed = 'copyMove';
+    e.dataTransfer.setData(
+      'application/x-multicloud-items',
+      JSON.stringify({ sourceCloud: type, items: itemsToDrag })
+    );
+    e.dataTransfer.setData(
+      'text/plain',
+      itemsToDrag.map((it) => it.name).join(', ')
+    );
+
+    if (itemsToDrag.length > 1) {
+      const badge = createMultiDragBadge(itemsToDrag.length);
+      e.dataTransfer.setDragImage(badge, 14, 14);
+      requestAnimationFrame(() => badge.remove());
+    }
+
+    onDragStartItems?.(type, itemsToDrag, clearSelection);
+  };
+
+  const handleDragEndItem = () => {
+    onDragEndItems?.();
+  };
+
   const extractDragPayload = (dataTransfer) => {
     if (dragState) return dragState;
     try {
-      const raw = dataTransfer?.getData('application/x-multicloud-item');
+      const raw = dataTransfer?.getData('application/x-multicloud-items');
       if (raw) return JSON.parse(raw);
     } catch {
       // ignore malformed payload
@@ -117,7 +268,7 @@ export default function CloudPane({
     setHoveredFolderName(null);
     setShiftHeld(false);
 
-    if (!payload || payload.sourceCloud === type) return;
+    if (!payload || payload.sourceCloud === type || !payload.items?.length) return;
 
     const mode = e.shiftKey
       ? transferMode === 'copy'
@@ -125,9 +276,9 @@ export default function CloudPane({
         : 'copy'
       : transferMode;
 
-    onDropItem?.({
+    onDropItems?.({
       sourceCloud: payload.sourceCloud,
-      item: payload.item,
+      items: payload.items,
       targetCloud: type,
       targetFolderId: type === 'google' ? currentFolderId || 'root' : currentFolderId,
       targetFolderName: breadcrumbs.length > 0 ? currentFolderLabel : '',
@@ -141,7 +292,7 @@ export default function CloudPane({
     setHoveredFolderName(null);
     setShiftHeld(false);
 
-    if (!payload || payload.sourceCloud === type) return;
+    if (!payload || payload.sourceCloud === type || !payload.items?.length) return;
 
     const mode = isShiftKey
       ? transferMode === 'copy'
@@ -149,9 +300,9 @@ export default function CloudPane({
         : 'copy'
       : transferMode;
 
-    onDropItem?.({
+    onDropItems?.({
       sourceCloud: payload.sourceCloud,
-      item: payload.item,
+      items: payload.items,
       targetCloud: type,
       targetFolderId: targetFolder.id,
       targetFolderName: targetFolder.name,
@@ -173,27 +324,111 @@ export default function CloudPane({
     );
   }
 
+  const handleRenameClick = () => {
+    if (selectedCount !== 1) return;
+    const selectedItem = items.find((it) => activeSelectedIds.has(it.id));
+    if (!selectedItem) return;
+    onRequestRename?.({
+      cloud: type,
+      title,
+      item: selectedItem,
+      clearSelection,
+    });
+  };
+
+  const handleDeleteClick = () => {
+    if (selectedCount === 0) return;
+    const selectedItems = items.filter((it) => activeSelectedIds.has(it.id));
+    onRequestDelete?.({
+      cloud: type,
+      title,
+      items: selectedItems,
+      clearSelection,
+    });
+  };
+
+  const handlePaneKeyDown = (e) => {
+    if (e.key === 'Delete' && selectedCount > 0) {
+      e.preventDefault();
+      handleDeleteClick();
+    } else if (e.key === 'F2' && selectedCount === 1) {
+      e.preventDefault();
+      handleRenameClick();
+    }
+  };
+
+  const draggedItems = dragState?.items || [];
+  const dragLabel =
+    draggedItems.length > 1
+      ? `${draggedItems.length} items`
+      : draggedItems.length === 1
+      ? `“${draggedItems[0].name}”`
+      : 'item';
+
   return (
     <div
       className={`cloud-pane ${showDropActive ? 'cloud-pane--drop-active' : ''} ${
         showDropActive && effectiveMode === 'move' ? 'cloud-pane--drop-move' : ''
       }`}
+      onKeyDown={handlePaneKeyDown}
       onDragOver={handlePaneDragOver}
       onDragLeave={handlePaneDragLeave}
       onDrop={handlePaneDrop}
     >
       <div className="pane-header-wrap">
         <div className="pane-title-row">
-          <div className="pane-title">{title}</div>
-          <button
-            type="button"
-            className="pane-refresh-btn"
-            onClick={onRefresh}
-            title={`Refresh ${title}`}
-            aria-label={`Refresh ${title}`}
-          >
-            <FiRefreshCw size={13} className={loading ? 'pane-spin' : ''} />
-          </button>
+          <div className="pane-title-group">
+            <div className="pane-title">{title}</div>
+            {selectedCount > 0 && (
+              <div className="pane-selection-pill" aria-live="polite">
+                <span>{selectedCount} selected</span>
+                <button
+                  type="button"
+                  className="pane-selection-clear"
+                  onClick={clearSelection}
+                  title="Clear selection (Esc)"
+                  aria-label="Clear selection"
+                >
+                  <FiX size={12} />
+                </button>
+              </div>
+            )}
+          </div>
+          <div className="pane-actions">
+            {selectedCount === 1 && (
+              <button
+                type="button"
+                className="pane-rename-btn"
+                onClick={handleRenameClick}
+                title="Rename selected item (F2)"
+                aria-label={`Rename selected item in ${title}`}
+              >
+                <FiEdit2 size={13} />
+                <span>Rename</span>
+              </button>
+            )}
+            {selectedCount > 0 && (
+              <button
+                type="button"
+                className="pane-delete-btn"
+                onClick={handleDeleteClick}
+                title={`Delete selected ${selectedCount === 1 ? 'item' : 'items'} (Del)`}
+                aria-label={`Delete ${selectedCount} selected item${selectedCount === 1 ? '' : 's'} from ${title}`}
+              >
+                <FiTrash2 size={13} />
+                <span>Delete</span>
+              </button>
+            )}
+            <button
+              type="button"
+              className="pane-refresh-btn"
+              onClick={onRefresh}
+              title={`Refresh ${title}`}
+              aria-label={`Refresh ${title}`}
+            >
+              <FiRefreshCw size={13} className={loading ? 'pane-spin' : ''} />
+            </button>
+          </div>
         </div>
         <Header
           breadcrumbs={breadcrumbs}
@@ -209,9 +444,13 @@ export default function CloudPane({
           cloudType={type}
           canTransfer={canTransfer}
           dragState={dragState}
+          selectedIds={activeSelectedIds}
+          onToggleSelect={handleToggleSelect}
+          onRowSelect={handleRowSelect}
+          onToggleSelectAll={handleToggleSelectAll}
           onFolderClick={handleFolderClick}
-          onDragStartItem={onDragStartItem}
-          onDragEndItem={onDragEndItem}
+          onDragStartItem={handleDragStartItem}
+          onDragEndItem={handleDragEndItem}
           onDropOnFolder={handleDropOnFolder}
           onFolderHoverChange={setHoveredFolderName}
         />
@@ -224,7 +463,7 @@ export default function CloudPane({
             {effectiveMode === 'move' ? <FiMove size={15} /> : <FiCopy size={15} />}
             <span className="pane-drop-banner-text">
               <strong>{effectiveMode === 'move' ? 'Move' : 'Copy'}</strong>{' '}
-              &ldquo;{dragState.item.name}&rdquo; &rarr; {title}
+              {dragLabel} &rarr; {title}
               {activeHoveredFolder
                 ? ` / ${activeHoveredFolder}`
                 : breadcrumbs.length > 0

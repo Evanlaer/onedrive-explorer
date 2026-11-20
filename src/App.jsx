@@ -1,15 +1,25 @@
 import './App.css';
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useIsAuthenticated, useMsal } from '@azure/msal-react';
 import { InteractionStatus } from '@azure/msal-browser';
 import Sidebar from './components/Sidebar/Sidebar';
 import CloudPane from './components/CloudPane/CloudPane';
 import TransferToast from './components/TransferToast/TransferToast';
+import ConfirmModal from './components/ConfirmModal/ConfirmModal';
+import RenameModal from './components/RenameModal/RenameModal';
 import { login } from './auth/authService';
 import { getUserProfile } from './api/graphService';
 import { initGoogleAuth, loginGoogle, logoutGoogle } from './auth/googleAuthService';
 import { getGoogleUserProfile } from './api/googleDriveService';
-import { transferItem, isItemFolder } from './api/transferService';
+import {
+  transferItem,
+  deleteCloudItem,
+  renameCloudItem,
+  isItemFolder,
+} from './api/transferService';
+
+const BATCH_CONCURRENCY = 2;
+const DELETE_CONCURRENCY = 3;
 
 export default function App() {
   const { instance, inProgress } = useMsal();
@@ -20,10 +30,13 @@ export default function App() {
   const [googleProfile, setGoogleProfile] = useState(null);
   const [msProfile, setMsProfile] = useState(null);
 
-  // Cross-Cloud Transfer State
+  // Cross-Cloud Transfer & Delete State
   const [transferMode, setTransferMode] = useState('copy'); // 'copy' | 'move'
-  const [dragState, setDragState] = useState(null); // { sourceCloud, item } | null
+  const [dragState, setDragState] = useState(null); // { sourceCloud, items } | null
+  const clearSourceSelectionRef = useRef(null);
   const [transfers, setTransfers] = useState([]);
+  const [pendingDelete, setPendingDelete] = useState(null); // { cloud, title, items, clearSelection } | null
+  const [pendingRename, setPendingRename] = useState(null); // { cloud, title, item, clearSelection } | null
   const [oneDriveRefreshKey, setOneDriveRefreshKey] = useState(0);
   const [googleRefreshKey, setGoogleRefreshKey] = useState(0);
 
@@ -83,6 +96,12 @@ export default function App() {
     setGoogleProfile(null);
   };
 
+  const handleGoogleAuthExpired = useCallback(() => {
+    setGoogleToken(null);
+    sessionStorage.removeItem('google_token');
+    setGoogleProfile(null);
+  }, []);
+
   const refreshCloud = useCallback((cloud) => {
     if (cloud === 'onedrive') {
       setOneDriveRefreshKey((k) => k + 1);
@@ -91,11 +110,12 @@ export default function App() {
     }
   }, []);
 
-  const handleDragStartItem = useCallback((sourceCloud, item) => {
-    setDragState({ sourceCloud, item });
+  const handleDragStartItems = useCallback((sourceCloud, items, clearSelectionFn) => {
+    clearSourceSelectionRef.current = clearSelectionFn || null;
+    setDragState({ sourceCloud, items });
   }, []);
 
-  const handleDragEndItem = useCallback(() => {
+  const handleDragEndItems = useCallback(() => {
     setDragState(null);
   }, []);
 
@@ -105,15 +125,21 @@ export default function App() {
     );
   }, []);
 
-  const handleDropItem = useCallback(
-    async ({ sourceCloud, item, targetCloud, targetFolderId, targetFolderName, mode }) => {
+  const handleDropItems = useCallback(
+    async ({ sourceCloud, items, targetCloud, targetFolderId, targetFolderName, mode }) => {
       setDragState(null);
+      clearSourceSelectionRef.current?.();
+      clearSourceSelectionRef.current = null;
 
       if (!isOneDriveAuth || !googleToken) return;
-      if (sourceCloud === targetCloud) return;
+      if (sourceCloud === targetCloud || !items?.length) return;
 
-      const transferId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-      const entry = {
+      const jobs = items.map((item, idx) => ({
+        transferId: `${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+        item,
+      }));
+
+      const entries = jobs.map(({ transferId, item }) => ({
         id: transferId,
         itemName: item.name,
         isFolder: isItemFolder(item),
@@ -121,59 +147,219 @@ export default function App() {
         targetCloud,
         targetFolderName: targetFolderName || '',
         mode,
-        status: 'active',
-        percent: 5,
-        detail: 'Preparing transfer…',
+        status: 'queued',
+        percent: 0,
+        detail: 'Queued…',
         warnings: [],
         error: null,
+      }));
+
+      setTransfers((prev) => [...entries, ...prev]);
+
+      let nextIndex = 0;
+      let anyTransferred = false;
+      let anySourceDeleted = false;
+
+      const runWorker = async () => {
+        while (nextIndex < jobs.length) {
+          const current = jobs[nextIndex];
+          nextIndex += 1;
+
+          const { transferId, item } = current;
+          updateTransfer(transferId, {
+            status: 'active',
+            percent: 5,
+            detail: 'Preparing transfer…',
+          });
+
+          try {
+            const result = await transferItem({
+              item,
+              sourceCloud,
+              targetCloud,
+              targetFolderId,
+              mode,
+              msalInstance: instance,
+              googleToken,
+              onProgress: (progress) => {
+                updateTransfer(transferId, {
+                  percent: progress.percent,
+                  detail: progress.detail,
+                });
+              },
+            });
+
+            anyTransferred = true;
+            if (result.sourceDeleted) {
+              anySourceDeleted = true;
+            }
+
+            const hasWarnings = result.warnings.length > 0;
+            updateTransfer(transferId, {
+              status: hasWarnings ? 'warning' : 'success',
+              percent: 100,
+              warnings: result.warnings,
+              detail: hasWarnings
+                ? `Completed with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}`
+                : mode === 'move' && result.sourceDeleted
+                ? 'Moved successfully'
+                : 'Copied successfully',
+            });
+          } catch (err) {
+            updateTransfer(transferId, {
+              status: 'error',
+              percent: 100,
+              detail: 'Transfer failed',
+              error: err.message || 'An unexpected error occurred during transfer.',
+            });
+          }
+        }
       };
 
-      setTransfers((prev) => [entry, ...prev]);
+      const workerCount = Math.min(BATCH_CONCURRENCY, jobs.length);
+      await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
 
-      try {
-        const result = await transferItem({
-          item,
-          sourceCloud,
-          targetCloud,
-          targetFolderId,
-          mode,
-          msalInstance: instance,
-          googleToken,
-          onProgress: (progress) => {
-            updateTransfer(transferId, {
-              percent: progress.percent,
-              detail: progress.detail,
-            });
-          },
-        });
-
-        const hasWarnings = result.warnings.length > 0;
-        updateTransfer(transferId, {
-          status: hasWarnings ? 'warning' : 'success',
-          percent: 100,
-          warnings: result.warnings,
-          detail: hasWarnings
-            ? `Completed with ${result.warnings.length} warning${result.warnings.length === 1 ? '' : 's'}`
-            : mode === 'move' && result.sourceDeleted
-            ? 'Moved successfully'
-            : 'Copied successfully',
-        });
-
-        // Refresh destination pane, and source pane if original item was moved/removed
+      // Refresh destination pane once the batch completes, and source pane if any originals were moved
+      if (anyTransferred) {
         refreshCloud(targetCloud);
-        if (result.sourceDeleted) {
-          refreshCloud(sourceCloud);
-        }
-      } catch (err) {
-        updateTransfer(transferId, {
-          status: 'error',
-          percent: 100,
-          detail: 'Transfer failed',
-          error: err.message || 'An unexpected error occurred during transfer.',
-        });
+      }
+      if (anySourceDeleted) {
+        refreshCloud(sourceCloud);
       }
     },
     [isOneDriveAuth, googleToken, instance, updateTransfer, refreshCloud]
+  );
+
+  const handleRequestDelete = useCallback((request) => {
+    if (!request?.items?.length) return;
+    setPendingDelete(request);
+  }, []);
+
+  const handleCancelDelete = useCallback(() => {
+    setPendingDelete(null);
+  }, []);
+
+  const handleConfirmDelete = useCallback(async () => {
+    const request = pendingDelete;
+    setPendingDelete(null);
+    if (!request?.items?.length) return;
+
+    const { cloud, items, clearSelection } = request;
+    clearSelection?.();
+
+    const jobs = items.map((item, idx) => ({
+      transferId: `del-${Date.now()}-${idx}-${Math.random().toString(36).slice(2, 7)}`,
+      item,
+    }));
+
+    const entries = jobs.map(({ transferId, item }) => ({
+      id: transferId,
+      itemName: item.name,
+      isFolder: isItemFolder(item),
+      sourceCloud: cloud,
+      targetCloud: cloud,
+      targetFolderName: '',
+      mode: 'delete',
+      status: 'queued',
+      percent: 0,
+      detail: 'Queued…',
+      warnings: [],
+      error: null,
+    }));
+
+    setTransfers((prev) => [...entries, ...prev]);
+
+    let nextIndex = 0;
+    let anyDeleted = false;
+    const binLabel = cloud === 'onedrive' ? 'Moved to Recycle Bin' : 'Moved to Trash';
+
+    const runWorker = async () => {
+      while (nextIndex < jobs.length) {
+        const current = jobs[nextIndex];
+        nextIndex += 1;
+
+        const { transferId, item } = current;
+        updateTransfer(transferId, {
+          status: 'active',
+          percent: 45,
+          detail: `Deleting ${item.name}…`,
+        });
+
+        try {
+          await deleteCloudItem({
+            item,
+            cloud,
+            msalInstance: instance,
+            googleToken,
+          });
+          anyDeleted = true;
+          updateTransfer(transferId, {
+            status: 'success',
+            percent: 100,
+            detail: binLabel,
+          });
+        } catch (err) {
+          updateTransfer(transferId, {
+            status: 'error',
+            percent: 100,
+            detail: 'Delete failed',
+            error: err.message || 'Could not delete item.',
+          });
+        }
+      }
+    };
+
+    const workerCount = Math.min(DELETE_CONCURRENCY, jobs.length);
+    await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+
+    if (anyDeleted) {
+      refreshCloud(cloud);
+    }
+  }, [pendingDelete, instance, googleToken, updateTransfer, refreshCloud]);
+
+  const handleRequestRename = useCallback((request) => {
+    if (!request?.item) return;
+    setPendingRename(request);
+  }, []);
+
+  const handleCancelRename = useCallback(() => {
+    setPendingRename(null);
+  }, []);
+
+  const handleSubmitRename = useCallback(
+    async (newName) => {
+      if (!pendingRename?.item) return;
+      const { cloud, item, clearSelection } = pendingRename;
+
+      await renameCloudItem({
+        item,
+        cloud,
+        newName,
+        msalInstance: instance,
+        googleToken,
+      });
+
+      setPendingRename(null);
+      clearSelection?.();
+      refreshCloud(cloud);
+
+      const entry = {
+        id: `ren-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        itemName: newName,
+        isFolder: isItemFolder(item),
+        sourceCloud: cloud,
+        targetCloud: cloud,
+        targetFolderName: '',
+        mode: 'rename',
+        status: 'success',
+        percent: 100,
+        detail: `Renamed from “${item.name}”`,
+        warnings: [],
+        error: null,
+      };
+      setTransfers((prev) => [entry, ...prev]);
+    },
+    [pendingRename, instance, googleToken, refreshCloud]
   );
 
   const handleDismissTransfer = useCallback((id) => {
@@ -181,7 +367,9 @@ export default function App() {
   }, []);
 
   const handleClearCompleted = useCallback(() => {
-    setTransfers((prev) => prev.filter((t) => t.status === 'active'));
+    setTransfers((prev) =>
+      prev.filter((t) => t.status === 'active' || t.status === 'queued')
+    );
   }, []);
 
   // Loading states
@@ -218,9 +406,11 @@ export default function App() {
         canTransfer={canTransfer}
         dragState={dragState}
         transferMode={transferMode}
-        onDragStartItem={handleDragStartItem}
-        onDragEndItem={handleDragEndItem}
-        onDropItem={handleDropItem}
+        onDragStartItems={handleDragStartItems}
+        onDragEndItems={handleDragEndItems}
+        onDropItems={handleDropItems}
+        onRequestDelete={handleRequestDelete}
+        onRequestRename={handleRequestRename}
       />
 
       {/* Right Pane: Google Drive */}
@@ -230,21 +420,36 @@ export default function App() {
         title="Google Drive"
         isAuthenticated={!!googleToken}
         accessToken={googleToken}
-        onLogin={loginGoogle}
+        onLogin={() => loginGoogle()}
         refreshKey={googleRefreshKey}
         onRefresh={() => refreshCloud('google')}
         canTransfer={canTransfer}
         dragState={dragState}
         transferMode={transferMode}
-        onDragStartItem={handleDragStartItem}
-        onDragEndItem={handleDragEndItem}
-        onDropItem={handleDropItem}
+        onDragStartItems={handleDragStartItems}
+        onDragEndItems={handleDragEndItems}
+        onDropItems={handleDropItems}
+        onRequestDelete={handleRequestDelete}
+        onRequestRename={handleRequestRename}
+        onAuthExpired={handleGoogleAuthExpired}
       />
 
       <TransferToast
         transfers={transfers}
         onDismiss={handleDismissTransfer}
         onClearCompleted={handleClearCompleted}
+      />
+
+      <ConfirmModal
+        pendingDelete={pendingDelete}
+        onCancel={handleCancelDelete}
+        onConfirm={handleConfirmDelete}
+      />
+
+      <RenameModal
+        pendingRename={pendingRename}
+        onCancel={handleCancelRename}
+        onSubmit={handleSubmitRename}
       />
     </div>
   );

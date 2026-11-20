@@ -5,8 +5,8 @@
 ## 1. Project Overview
 
 **Application Name:** Multi-Cloud Explorer (formerly OneDrive Explorer)  
-**Vision:** A premium, dual-pane web application that allows users to browse, navigate, and transfer files and folders seamlessly between OneDrive and Google Drive side-by-side.  
-**Phase:** v1.2 — Cross-Cloud Transfers (Supports simultaneous exploration plus bidirectional Drag & Drop Copy and Move between Microsoft Graph and Google Drive API v3).
+**Vision:** A premium, dual-pane web application that allows users to browse, organize, and transfer files and folders seamlessly between OneDrive and Google Drive side-by-side.  
+**Phase:** v1.3 — Multi-Select Batch Transfers & File Management (Supports multi-file/folder selection, batch Drag & Drop Copy/Move, Delete with confirmation, Rename, and graceful Google session renewal).
 
 ---
 
@@ -14,8 +14,8 @@
 
 | Persona | Description |
 |---|---|
-| **Multi-Cloud User** | An individual with accounts on both OneDrive and Google Drive who needs to view, organize, copy, and move content across clouds in a single unified interface. |
-| **Independent User** | A user who may only have one of the two cloud accounts but wants a premium explorer experience. |
+| **Multi-Cloud User** | An individual with accounts on both OneDrive and Google Drive who needs to browse, organize, rename, delete, copy, and move content across clouds in a single unified interface. |
+| **Independent User** | A user who may only have one of the two cloud accounts but wants a fast, clean web explorer with full file management. |
 
 ---
 
@@ -31,24 +31,25 @@
 | FR-04 | As a user, I want a **breadcrumb trail** and manual refresh button for each cloud provider. | Must-Have | Implemented |
 | FR-05 | As a user, I want a **unified sidebar** to manage both account profiles, logouts, and default transfer mode. | Must-Have | Implemented |
 | FR-06 | As a user, I want **file icons** (Word, PDF, Docs, Sheets, Slides, etc.) mapped correctly for both clouds. | Must-Have | Implemented |
-| FR-12 | As a user, I want to **log out of each account independently**. | Must-Have | Implemented |
+| FR-12 | As a user, I want to **log out of each account independently** and recover smoothly when Google's 1-hour token expires. | Must-Have | Implemented |
 | FR-13 | As a user, I want a **premium, responsive UI** that adapts to the dual-pane view. | Must-Have | Implemented |
 | FR-14 | As a user, I want to **drag and drop files and folders between OneDrive and Google Drive** in either direction (into the current folder or directly onto a target subfolder). | Must-Have | Implemented |
 | FR-15 | As a user, I want **Copy by default**, with a sidebar **Copy / Move toggle** and **`Shift`-key override** on drop to switch modes dynamically. | Must-Have | Implemented |
 | FR-16 | As a user, I want **Google Docs, Sheets, Slides, and Drawings** automatically exported to Office/PNG formats (`.docx`, `.xlsx`, `.pptx`, `.png`) when transferred to OneDrive. | Must-Have | Implemented |
-| FR-17 | As a user, I want **real-time transfer progress, errors, and warnings** displayed in a floating Transfers toast, with automatic pane refresh on completion. | Must-Have | Implemented |
+| FR-17 | As a user, I want **real-time activity progress, errors, and warnings** displayed in a floating activity toast, with automatic pane refresh on completion. | Must-Have | Implemented |
 | FR-18 | As a user, I want **safe Move semantics** so source files/folders are only sent to Recycle Bin / Trash after a 100% successful upload. | Must-Have | Implemented |
+| FR-19 | As a user, I want to **select multiple files and folders** in a folder (via checkboxes, Select All, `Ctrl/Cmd+Click`, `Shift+Click`, and `Esc` to clear) and **drag-and-drop them as a batch**. | Must-Have | Implemented |
+| FR-20 | As a user, I want to **delete one or multiple selected items** in either OneDrive or Google Drive via a **Delete** button (or `Del` key) with a confirmation dialog sending them to Recycle Bin / Trash. | Must-Have | Implemented |
+| FR-21 | As a user, I want to **rename a selected file or folder** in either OneDrive or Google Drive via a **Rename** button (or `F2` key) with extension-preserving selection and inline validation. | Must-Have | Implemented |
 
 ### Happy Path
-1. User opens the app → sees a dashboard with two "Sign In" panes (OneDrive & Google Drive).
-2. User signs into OneDrive (`Files.ReadWrite`) → Left pane populates with Microsoft files.
-3. User signs into Google Drive (`drive`) → Right pane populates with Google files.
-4. User navigates folders independently in either pane.
-5. User drags a file or folder from one pane and drops it into the opposite pane (or directly onto a subfolder row):
-   - A live drop banner previews `Copy` or `Move` and the destination path (`Hold Shift to Move/Copy`).
-   - The floating **Transfers** toast displays live download & upload percentages.
-   - Upon completion, the destination pane refreshes automatically (and the source pane refreshes too if `Move` removed the original).
-6. Sidebar shows both profiles and the **Drag & Drop Mode** switch; signing out of one cloud locks only that pane.
+1. User signs into OneDrive (`Files.ReadWrite`) and Google Drive (`drive`).
+2. User navigates folders independently in either pane.
+3. **Multi-Select & Batch Transfer**: User checks several files/folders (or uses `Ctrl+Click` / `Shift+Click` / Select All) and drags any selected item to the opposite pane (or onto a specific subfolder):
+   - A custom `N items` drag badge and live drop banner preview `Copy N items` or `Move N items` (`Hold Shift` switches Copy ↔ Move).
+   - The floating **Transfers** toast processes items with controlled concurrency (2 active at a time, remaining queued) with live download/upload percentages, then refreshes affected panes automatically.
+4. **Delete**: With 1+ items selected in either pane, user clicks **Delete** (or presses `Del`) → confirms in the modal → items move safely to OneDrive Recycle Bin or Google Drive Trash and the pane refreshes.
+5. **Rename**: With 1 item selected in either pane, user clicks **Rename** (or presses `F2`) → edits the pre-selected base filename → clicks **Save** → item renames in place and the pane refreshes.
 
 ---
 
@@ -56,11 +57,12 @@
 
 | Category | Requirement |
 |---|---|
-| **Auth Security** | Uses **Microsoft MSAL (PKCE)** with `User.Read` + `Files.ReadWrite`, and **Google GIS (Token Client)** with `https://www.googleapis.com/auth/drive`. Tokens stay in `sessionStorage` — no secrets stored in the codebase. |
-| **Performance & Large Files** | Both panes load asynchronously with independent skeleton states. Large files (> 4–5 MB) transfer via a host-allowlisted local Vite Node streaming relay (`/api/transfer-file`) using **5 MiB resumable chunks**, avoiding browser CORS restrictions and ~10 MB response body limits. |
-| **Data Safety** | Move transfers only delete/trash the original after upload succeeds (and for folders, only if zero nested files failed). Deletions go to OneDrive Recycle Bin / Google Drive Trash rather than irreversible purge. |
-| **Filename Compatibility** | Invalid OneDrive filename characters (`\ / : * ? " < > |`) are automatically sanitized to `_` on upload, and name collisions use OneDrive's `conflictBehavior: rename`. |
-| **State Isolation** | Navigation state for both panes is localized to each `CloudPane` instance; cross-cloud drag/transfer state is coordinated cleanly from `App.jsx`. |
+| **Auth Security & Expiry** | Uses **Microsoft MSAL (PKCE)** with `User.Read` + `Files.ReadWrite`, and **Google GIS (Token Client)** with `https://www.googleapis.com/auth/drive`. Tokens stay in `sessionStorage`. Expired Google tokens (`401`) automatically reset the Google pane to a clean one-click Sign-In state. |
+| **Performance & Large Files** | Both panes load asynchronously with independent skeleton states. Files transfer via a host-allowlisted local Vite Node streaming relay (`/api/transfer-file`) using **5 MiB resumable chunks**, avoiding browser CORS restrictions and ~10 MB response body caps. |
+| **Batch Concurrency** | Multi-file Copy/Move runs up to 2 simultaneous transfers; multi-item Delete runs up to 3 simultaneous requests, preventing API throttling while keeping the UI responsive. |
+| **Data Safety** | Delete and Move operations send items to OneDrive Recycle Bin / Google Drive Trash (recoverable). Folder moves only remove the source folder if 100% of nested files succeeded with zero warnings. |
+| **Filename Compatibility** | Invalid OneDrive filename characters (`\ / : * ? " < > |`) are blocked inline during Rename and automatically sanitized to `_` during cross-cloud upload. |
+| **State Isolation** | Navigation and selection state for each pane are localized inside `CloudPane`; cross-cloud drag, modals, and activity queue state are coordinated from `App.jsx`. |
 
 ---
 
@@ -82,7 +84,7 @@
 | Metric | Target |
 |---|---|
 | Dual Login | Both accounts logged in simultaneously in under 45 seconds. |
-| Independence | Navigating in one pane has zero impact on the other's state. |
-| Transfer Reliability | Both small files and large archives (> 30 MB) copy and move cleanly in both directions with live progress. |
-| Move Safety | Zero data loss on partial folder failures or interrupted uploads. |
+| Independence | Navigating or selecting items in one pane has zero impact on the other's state. |
+| Transfer Reliability | Single and multi-file batches (including > 30 MB archives) copy and move cleanly in both directions with live progress. |
+| Safe File Management | Delete requires explicit confirmation and uses Recycle Bin / Trash; Rename preserves file extensions and validates forbidden characters. |
 | Icon Accuracy | Correct icon rendered for Microsoft and Google Workspace MIME types. |

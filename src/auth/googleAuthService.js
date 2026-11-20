@@ -33,15 +33,16 @@ export function initGoogleAuth(onTokenReceived) {
 }
 
 /**
- * Initiates the interactive Google login/consent flow.
+ * Initiates the interactive Google login/token renewal flow.
+ * Passing prompt: '' lets Google skip redundant consent screens when scopes
+ * are already granted (e.g. after the 1-hour GIS token expires).
  */
-export function loginGoogle() {
+export function loginGoogle({ forceConsent = false } = {}) {
   if (!tokenClient) {
     console.error('Google Auth not initialized or Client ID missing');
     return;
   }
-  // This will trigger the popup consent window
-  tokenClient.requestAccessToken({ prompt: 'consent' });
+  tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
 }
 
 /**

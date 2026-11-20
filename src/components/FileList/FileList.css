@@ -5,9 +5,10 @@
 }
 
 .filelist-header {
-  display: grid;
-  grid-template-columns: 1fr 140px;
-  padding: 8px 16px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 22px;
   font-size: 0.65rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -15,6 +16,46 @@
   color: var(--text-muted);
   border-bottom: 1px solid var(--outline-variant);
   margin-bottom: 4px;
+}
+
+.filelist-select-all {
+  width: 18px;
+  height: 18px;
+  border-radius: 5px;
+  border: 1.5px solid var(--outline);
+  background: transparent;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  opacity: 0.65;
+  transition: opacity var(--transition-fast), background var(--transition-fast),
+              border-color var(--transition-fast);
+}
+
+.filelist-select-all:hover {
+  opacity: 1;
+  border-color: var(--primary);
+  background: var(--primary-glow);
+}
+
+.filelist-select-all--active {
+  opacity: 1;
+  background: var(--primary-container);
+  border-color: var(--primary);
+}
+
+.filelist-select-all--active:hover {
+  background: var(--primary-container);
+}
+
+.filelist-header-name {
+  flex: 1;
+}
+
+.filelist-header-date {
+  white-space: nowrap;
 }
 
 .filelist-items {
