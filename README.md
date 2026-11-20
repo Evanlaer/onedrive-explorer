@@ -44,6 +44,15 @@ A premium, dual-pane file explorer built with **React + Vite**. Authenticate wit
 5. **Documentation**:
    Detailed specifications and architecture diagrams are in [docs/](./docs/) ([APPLICATION_SPEC.md](./docs/APPLICATION_SPEC.md), [ARCHITECTURE.md](./docs/ARCHITECTURE.md)).
 
+## Deploying to Vercel (Free, No Local Server Needed)
+This repository is pre-configured for **Vercel** (`vercel.json` + `api/transfer-file.js` serverless relay):
+1. Import `Evanlaer/onedrive-explorer` on [vercel.com](https://vercel.com/new).
+2. Add environment variables `VITE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` in Vercel Project Settings.
+3. Click **Deploy** to get your HTTPS URL (e.g. `https://your-app.vercel.app`).
+4. Add your Vercel URL to:
+   - **Azure Portal** → App Registration → **Authentication** → **Single-page application (SPA) Redirect URIs**.
+   - **Google Cloud Console** → **OAuth 2.0 Client ID** → **Authorized JavaScript origins**.
+
 ## Security & Authentication
 - **OneDrive**: Microsoft MSAL (OAuth 2.0 Authorization Code + PKCE).
 - **Google Drive**: Google Identity Services (GIS Token Client).
