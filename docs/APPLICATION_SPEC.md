@@ -43,6 +43,7 @@
 | FR-21 | As a user, I want to **rename a selected file or folder** in either OneDrive or Google Drive via a **Rename** button (or `F2` key) with extension-preserving selection and inline validation. | Must-Have | Implemented |
 | FR-22 | As a user, I want a **Connection Settings modal** to store OneDrive and Google Drive connection parameters (Auto-Connect toggles, optional Client ID / Authority / Secret overrides, and default Copy/Move mode) so both clouds reconnect automatically every time the app starts. | Must-Have | Implemented |
 | FR-23 | As a user, I want to **add, name, save, and manage multiple OneDrive and Google Drive accounts** in Connection Settings and **select which account to display in each pane via a pick list** on the main page (supporting OneDrive ↔ Google Drive, OneDrive ↔ OneDrive, and Google Drive ↔ Google Drive transfers). | Must-Have | Implemented |
+| FR-24 | As a user, I want **unlimited folder pagination** (automatic infinite scroll + Load more / Load all + full multi-page recursive folder scans) so folders with more than 200 items never truncate on OneDrive or Google Drive. | Must-Have | Implemented |
 
 ### Happy Path
 1. **Multi-Account Setup & Auto-Connect**: User adds and names one or more OneDrive and Google Drive accounts in **Connection Settings** (or connects the default accounts directly from the panes). With **Auto-connect on startup** enabled, future launches reconnect every saved account automatically without repeated sign-in prompts.

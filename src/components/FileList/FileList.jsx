@@ -1,6 +1,7 @@
 import './FileList.css';
+import { useEffect, useRef } from 'react';
 import FileItem from '../FileItem/FileItem';
-import { FiFolder, FiCheck, FiMinus } from 'react-icons/fi';
+import { FiFolder, FiCheck, FiMinus, FiLoader } from 'react-icons/fi';
 
 function LoadingSkeleton() {
   return (
@@ -22,7 +23,12 @@ function LoadingSkeleton() {
 export default function FileList({
   items,
   loading,
+  loadingMore = false,
+  hasMore = false,
+  onLoadMore,
+  onLoadAll,
   error,
+  loadMoreError = null,
   paneId,
   connectionId,
   canTransfer,
@@ -37,6 +43,31 @@ export default function FileList({
   onDropOnFolder,
   onFolderHoverChange,
 }) {
+  const scrollContainerRef = useRef(null);
+  const sentinelRef = useRef(null);
+
+  // Automatic infinite scroll when approaching the bottom of a paginated folder
+  useEffect(() => {
+    if (!hasMore || loadingMore || loadMoreError || !onLoadMore) return undefined;
+    const root = scrollContainerRef.current;
+    const target = sentinelRef.current;
+    if (!root || !target || typeof IntersectionObserver === 'undefined') {
+      return undefined;
+    }
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries.some((entry) => entry.isIntersecting)) {
+          onLoadMore();
+        }
+      },
+      { root, rootMargin: '240px 0px' }
+    );
+
+    observer.observe(target);
+    return () => observer.disconnect();
+  }, [hasMore, loadingMore, loadMoreError, onLoadMore, items.length]);
+
   if (loading) return <LoadingSkeleton />;
 
   if (error) {
@@ -87,10 +118,17 @@ export default function FileList({
           {allSelected && <FiCheck size={12} strokeWidth={3} />}
           {someSelected && <FiMinus size={12} strokeWidth={3} />}
         </button>
-        <span className="filelist-header-name">Name</span>
+        <span className="filelist-header-name">
+          Name
+          <span className="filelist-header-count">
+            ({items.length}
+            {hasMore ? '+' : ''})
+          </span>
+        </span>
         <span className="filelist-header-date">Modified</span>
       </div>
-      <div className="filelist-items">
+
+      <div className="filelist-items" ref={scrollContainerRef}>
         {items.map((item) => (
           <FileItem
             key={item.id}
@@ -111,6 +149,53 @@ export default function FileList({
             onFolderHoverChange={onFolderHoverChange}
           />
         ))}
+
+        {/* Pagination Sentinel & Footer */}
+        <div className="filelist-footer" ref={sentinelRef}>
+          {loadingMore ? (
+            <div className="filelist-footer-loading">
+              <FiLoader className="filelist-spin" size={14} />
+              <span>Loading more items… ({items.length} loaded)</span>
+            </div>
+          ) : loadMoreError ? (
+            <div className="filelist-footer-error">
+              <span>{loadMoreError}</span>
+              <button
+                type="button"
+                className="filelist-footer-btn"
+                onClick={onLoadMore}
+              >
+                Retry
+              </button>
+            </div>
+          ) : hasMore ? (
+            <div className="filelist-footer-more">
+              <span className="filelist-footer-count">
+                Showing {items.length} items (more available)
+              </span>
+              <div className="filelist-footer-actions">
+                <button
+                  type="button"
+                  className="filelist-footer-btn"
+                  onClick={onLoadMore}
+                >
+                  Load more
+                </button>
+                <button
+                  type="button"
+                  className="filelist-footer-btn filelist-footer-btn--secondary"
+                  onClick={onLoadAll}
+                >
+                  Load all
+                </button>
+              </div>
+            </div>
+          ) : (
+            <span className="filelist-footer-done">
+              {items.length} item{items.length === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );

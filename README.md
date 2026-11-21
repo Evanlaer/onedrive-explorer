@@ -17,7 +17,9 @@ A premium, dual-pane file explorer built with **React + Vite**. Authenticate wit
   - **Delete**: Select one or more items and click **Delete** (or press `Del`) to move them to OneDrive Recycle Bin or Google Drive Trash after confirmation.
   - **Rename**: Select an item and click **Rename** (or press `F2`) with extension-preserving selection and inline validation.
 - **Automatic Google Workspace Export**: Google Docs, Sheets, Slides, and Drawings are exported automatically to `.docx`, `.xlsx`, `.pptx`, and `.png` when transferred to OneDrive.
-- **Large File Support**: Local Vite Node streaming relay (`/api/transfer-file`) handles resumable 5 MiB chunk uploads and live progress bars without browser CORS or size caps.
+- **Large Folder & Large File Support**:
+  - **Unlimited Folder Pagination**: Follows OneDrive `@odata.nextLink` and Google Drive `nextPageToken` with automatic infinite scroll, **Load more / Load all** controls, and complete multi-page recursive folder transfers (no 200-item cap).
+  - **Streaming Transfer Relay**: Node / Vercel streaming relay (`/api/transfer-file`) handles resumable 5 MiB chunk uploads and live progress bars without browser CORS or size caps.
 - **Custom Icon Mapping**: Visual icons for Office, PDF, media, code, archives, and Google Workspace MIME types.
 
 ## Getting Started

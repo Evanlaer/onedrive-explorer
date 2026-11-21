@@ -5,6 +5,8 @@
 const DRIVE_BASE = 'https://www.googleapis.com/drive/v3';
 const DRIVE_UPLOAD_BASE = 'https://www.googleapis.com/upload/drive/v3';
 const MULTIPART_UPLOAD_LIMIT = 5 * 1024 * 1024; // 5 MB
+const DEFAULT_PAGE_SIZE = 200;
+const MAX_PAGINATION_PAGES = 200;
 
 /**
  * Automatic Office export mapping for Google Workspace native files.
@@ -83,19 +85,55 @@ export async function getGoogleUserProfile(accessToken) {
 }
 
 /**
- * Fetches the items in a given Google Drive folder ID.
- * Use 'root' for the initial drive root.
- * Returns folders first, then files, alphabetically.
+ * Fetches a single page of items in a Google Drive folder (`folderId = 'root'` for Drive root).
+ * Requests `nextPageToken` so folders with > 200 items can be paginated completely.
+ */
+export async function getGoogleDriveItemsPage(
+  accessToken,
+  folderId = 'root',
+  pageToken = null,
+  pageSize = DEFAULT_PAGE_SIZE
+) {
+  const params = {
+    q: `'${folderId}' in parents and trashed = false`,
+    fields: 'nextPageToken, files(id, name, mimeType, size, modifiedTime, iconLink)',
+    orderBy: 'folder,name',
+    pageSize: String(pageSize),
+  };
+  if (pageToken) {
+    params.pageToken = pageToken;
+  }
+
+  const data = await driveGet(accessToken, '/files', params);
+  return {
+    items: data.files || [],
+    nextPageToken: data.nextPageToken || null,
+  };
+}
+
+/**
+ * Fetches ALL items in a Google Drive folder across every `nextPageToken` page.
+ * Used by recursive folder transfers so folders with > 200 items are never truncated.
  */
 export async function getDriveItems(accessToken, folderId = 'root') {
-  const data = await driveGet(accessToken, '/files', {
-    q: `'${folderId}' in parents and trashed = false`,
-    fields: 'files(id, name, mimeType, size, modifiedTime, iconLink)',
-    orderBy: 'folder,name',
-    pageSize: 200,
-  });
+  const all = [];
+  const seenIds = new Set();
+  let pageToken = null;
+  let pageCount = 0;
 
-  return sortDriveItems(data.files || []);
+  do {
+    const page = await getGoogleDriveItemsPage(accessToken, folderId, pageToken, 1000);
+    for (const item of page.items) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        all.push(item);
+      }
+    }
+    pageToken = page.nextPageToken;
+    pageCount += 1;
+  } while (pageToken && pageCount < MAX_PAGINATION_PAGES);
+
+  return sortDriveItems(all);
 }
 
 /**
@@ -344,7 +382,7 @@ export async function deleteGoogleDriveItem(accessToken, itemId) {
 /**
  * Client-side sorting: folders first, then alphabetical.
  */
-function sortDriveItems(items) {
+export function sortDriveItems(items) {
   return [...items].sort((a, b) => {
     const aIsFolder = a.mimeType === 'application/vnd.google-apps.folder';
     const bIsFolder = b.mimeType === 'application/vnd.google-apps.folder';

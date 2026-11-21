@@ -52,6 +52,15 @@
 
 .filelist-header-name {
   flex: 1;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.filelist-header-count {
+  font-weight: 500;
+  color: var(--text-muted);
+  opacity: 0.85;
 }
 
 .filelist-header-date {
@@ -125,4 +134,95 @@
   0%   { opacity: 0.5; }
   50%  { opacity: 1; }
   100% { opacity: 0.5; }
+}
+
+/* Pagination Footer */
+.filelist-footer {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 14px 12px 22px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.filelist-footer-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+  font-weight: 500;
+}
+
+.filelist-footer-more {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  background: var(--surface-low);
+  border: 1px solid var(--outline-variant);
+}
+
+.filelist-footer-count {
+  color: var(--text-secondary);
+  font-size: 0.74rem;
+}
+
+.filelist-footer-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.filelist-footer-btn {
+  padding: 5px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  background: var(--primary-container);
+  color: #fff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  transition: background var(--transition-fast);
+}
+
+.filelist-footer-btn:hover {
+  background: #005a9e;
+}
+
+.filelist-footer-btn--secondary {
+  background: var(--surface-bright);
+  border-color: var(--outline-variant);
+  color: var(--text-primary);
+}
+
+.filelist-footer-btn--secondary:hover {
+  background: var(--surface-highest);
+}
+
+.filelist-footer-error {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  background: var(--error-dim);
+  color: var(--error);
+}
+
+.filelist-footer-done {
+  font-size: 0.7rem;
+  opacity: 0.7;
+}
+
+.filelist-spin {
+  animation: filelist-spin 0.9s linear infinite;
+}
+
+@keyframes filelist-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }

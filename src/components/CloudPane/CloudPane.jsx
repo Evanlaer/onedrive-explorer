@@ -144,7 +144,16 @@ export default function CloudPane({
     onAuthExpired
   );
 
-  const { items, loading, error } = type === 'onedrive' ? oneDriveData : googleDriveData;
+  const {
+    items,
+    loading,
+    loadingMore,
+    hasMore,
+    loadMore,
+    loadAll,
+    error,
+    loadMoreError,
+  } = type === 'onedrive' ? oneDriveData : googleDriveData;
 
   // Keep only IDs that actually exist in the current directory listing
   const activeSelectedIds = useMemo(() => {
@@ -575,7 +584,12 @@ export default function CloudPane({
         <FileList
           items={items}
           loading={loading}
+          loadingMore={loadingMore}
+          hasMore={hasMore}
+          onLoadMore={loadMore}
+          onLoadAll={loadAll}
           error={error}
+          loadMoreError={loadMoreError}
           paneId={paneId}
           connectionId={connectionId}
           canTransfer={canTransfer}

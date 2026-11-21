@@ -3,6 +3,8 @@ import { getAccessToken } from '../auth/authService';
 const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const SIMPLE_UPLOAD_LIMIT = 4 * 1024 * 1024; // 4 MB
 const CHUNK_SIZE = 320 * 1024 * 16; // 5 MiB (must be a multiple of 320 KiB)
+const DEFAULT_PAGE_SIZE = 200;
+const MAX_PAGINATION_PAGES = 200;
 
 /**
  * Sanitizes characters forbidden in OneDrive item names.
@@ -32,10 +34,23 @@ async function buildGraphError(response, action) {
 
 /**
  * Makes an authenticated GET request to the Microsoft Graph API.
+ * Accepts either a relative Graph path (e.g. '/me/drive/root/children')
+ * or an absolute @odata.nextLink URL on graph.microsoft.com.
  */
-async function graphGet(msalInstance, endpoint) {
+async function graphGet(msalInstance, endpointOrUrl) {
   const token = await getAccessToken(msalInstance);
-  const response = await fetch(`${GRAPH_BASE}${endpoint}`, {
+  let targetUrl;
+  if (endpointOrUrl.startsWith('https://')) {
+    const parsed = new URL(endpointOrUrl);
+    if (parsed.hostname.toLowerCase() !== 'graph.microsoft.com') {
+      throw new Error(`Unexpected OneDrive pagination host: ${parsed.hostname}`);
+    }
+    targetUrl = parsed.toString();
+  } else {
+    targetUrl = `${GRAPH_BASE}${endpointOrUrl}`;
+  }
+
+  const response = await fetch(targetUrl, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!response.ok) {
@@ -52,26 +67,65 @@ export async function getUserProfile(msalInstance) {
 }
 
 /**
- * Fetches the items in the OneDrive root folder.
- * Returns folders first, then files, alphabetically sorted.
+ * Fetches a single page of items for the OneDrive root (folderId = null) or a subfolder.
+ * Pass `nextLink` (from `@odata.nextLink`) to fetch the next page.
  */
-export async function getRootItems(msalInstance) {
-  const data = await graphGet(
-    msalInstance,
-    '/me/drive/root/children?$select=id,name,folder,file,size,lastModifiedDateTime&$orderby=name&$top=200'
-  );
-  return sortItems(data.value || []);
+export async function getOneDriveItemsPage(
+  msalInstance,
+  folderId = null,
+  nextLink = null,
+  pageSize = DEFAULT_PAGE_SIZE
+) {
+  const endpoint =
+    nextLink ||
+    (folderId
+      ? `/me/drive/items/${folderId}/children?$select=id,name,folder,file,size,lastModifiedDateTime&$orderby=name&$top=${pageSize}`
+      : `/me/drive/root/children?$select=id,name,folder,file,size,lastModifiedDateTime&$orderby=name&$top=${pageSize}`);
+
+  const data = await graphGet(msalInstance, endpoint);
+  return {
+    items: data.value || [],
+    nextLink: data['@odata.nextLink'] || null,
+  };
 }
 
 /**
- * Fetches the items inside a specific folder by its ID.
+ * Fetches ALL items across every @odata.nextLink page for a folder (or root when folderId is null).
+ * Used by recursive folder transfers so folders with > 200 items are never truncated.
+ */
+async function getAllOneDriveItems(msalInstance, folderId = null) {
+  const all = [];
+  const seenIds = new Set();
+  let nextLink = null;
+  let pageCount = 0;
+
+  do {
+    const page = await getOneDriveItemsPage(msalInstance, folderId, nextLink, 500);
+    for (const item of page.items) {
+      if (!seenIds.has(item.id)) {
+        seenIds.add(item.id);
+        all.push(item);
+      }
+    }
+    nextLink = page.nextLink;
+    pageCount += 1;
+  } while (nextLink && pageCount < MAX_PAGINATION_PAGES);
+
+  return sortItems(all);
+}
+
+/**
+ * Fetches all items in the OneDrive root folder (folders first, then files, alphabetically).
+ */
+export async function getRootItems(msalInstance) {
+  return getAllOneDriveItems(msalInstance, null);
+}
+
+/**
+ * Fetches all items inside a specific folder by its ID (following all pagination links).
  */
 export async function getFolderChildren(msalInstance, folderId) {
-  const data = await graphGet(
-    msalInstance,
-    `/me/drive/items/${folderId}/children?$select=id,name,folder,file,size,lastModifiedDateTime&$orderby=name&$top=200`
-  );
-  return sortItems(data.value || []);
+  return getAllOneDriveItems(msalInstance, folderId);
 }
 
 /**
@@ -299,7 +353,7 @@ export async function deleteOneDriveItem(msalInstance, itemId) {
 /**
  * Sorts items: folders first, then files, both alphabetically.
  */
-function sortItems(items) {
+export function sortItems(items) {
   return [...items].sort((a, b) => {
     const aIsFolder = !!a.folder;
     const bIsFolder = !!b.folder;

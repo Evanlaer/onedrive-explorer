@@ -71,7 +71,7 @@ App.jsx (Root Coordinator: Multi-Account Auth Maps, Silent Refresh, Settings, Ba
 - Contextual action buttons: **Rename** (`F2`, when 1 item selected), **Delete** (`Del`, when 1+ items selected), and **Refresh**.
 - Batch drag-and-drop initiation (dragging any selected item drags the entire selection with a custom `N items` ghost badge) and drop handling (pane-level or direct subfolder drop).
 - Live `Shift`-key modifier preview switching Copy ↔ Move.
-- Data fetching via provider-specific hooks (`useDriveItems` / `useGoogleDriveItems`) with `refreshKey` and Google `401` expiry callbacks.
+- Data fetching and progressive pagination via provider-specific hooks (`useDriveItems` / `useGoogleDriveItems`) following OneDrive `@odata.nextLink` and Google Drive `nextPageToken` with `IntersectionObserver` infinite scroll, **Load more / Load all**, `refreshKey`, and Google `401` expiry callbacks.
 
 ---
 
@@ -90,7 +90,7 @@ Both backend handlers live in `server/` and are wired identically into **Vite** 
    - Node downloads the source stream and uploads to the target using **5 MiB resumable chunks** (`createUploadSession` for OneDrive; `uploadType=resumable` with `redirect: 'manual'` for Google Drive `308 Resume Incomplete`), streaming NDJSON progress updates back to the browser.
    - Automatically falls back to direct browser download/upload if `/api/transfer-file` is unavailable.
 3. **Recursive Folder Transfer**:
-   - Scans the source folder tree (up to depth 20) to compute accurate total file counts, recreates folders at the destination, and transfers nested files sequentially.
+   - Scans the entire source folder tree across all pagination pages (`@odata.nextLink` / `nextPageToken`, up to depth 20) to compute accurate total file counts without 200-item truncation, recreates folders at the destination, and transfers nested files sequentially.
    - Records per-file warnings without aborting remaining files; in `move` mode, the original folder is deleted/trashed only if zero warnings occurred.
 4. **Delete & Rename**:
    - **Delete**: `ConfirmModal` previews up to 6 item names (+ overflow count). On confirm, a worker pool (**concurrency = 3**) calls `DELETE /me/drive/items/{id}` (OneDrive Recycle Bin) or `PATCH /files/{id} { trashed: true }` (Google Drive Trash), logging each result in `TransferToast`.
@@ -117,9 +117,9 @@ onedrive-explorer/
 │   ├── main.jsx                      # MSAL v5 redirect-bridge handler, dynamic MSAL init & ssoSilent bootstrap
 │   ├── App.jsx                       # Root coordinator: auth, silent refresh, settings, DnD, workers & modals
 │   ├── api/
-│   │   ├── graphService.js           # MS Graph API (list, download descriptor, upload, folder, rename, delete)
-│   │   ├── googleDriveService.js     # Google Drive API v3 (list, export/download, upload, folder, rename, trash)
-│   │   └── transferService.js        # Cross-cloud transfer, folder recursion, delete & rename helpers
+│   │   ├── graphService.js           # MS Graph API (paginated list, download descriptor, upload, folder, rename, delete)
+│   │   ├── googleDriveService.js     # Google Drive API v3 (paginated list, export/download, upload, folder, rename, trash)
+│   │   └── transferService.js        # Cross-account transfer, full-page folder recursion, delete & rename helpers
 │   ├── auth/
 │   │   ├── authService.js            # Multi-account MSAL login/logout & per-account token acquisition
 │   │   ├── msalConfig.js             # Dynamic per-connection MSAL config builder
@@ -129,15 +129,15 @@ onedrive-explorer/
 │   │   ├── CloudPane/                # Dual-purpose explorer pane, connecting state, multi-select, actions & DnD
 │   │   ├── ConfirmModal/             # Delete confirmation dialog
 │   │   ├── FileItem/                 # Checkbox + draggable file/folder rows + subfolder drop targets
-│   │   ├── FileList/                 # Select-all header, item list & loading skeletons
+│   │   ├── FileList/                 # Select-all header, item counts, infinite scroll & Load more/all footer
 │   │   ├── Header/                   # Breadcrumb trail
 │   │   ├── RenameModal/              # Rename dialog with extension-aware selection & validation
-│   │   ├── SettingsModal/            # Connection Settings modal (auto-connect, OAuth overrides, preferences)
-│   │   ├── Sidebar/                  # Profiles, logouts, Copy/Move switch, Settings button
+│   │   ├── SettingsModal/            # Connection Settings modal (multi-account, auto-connect, OAuth overrides)
+│   │   ├── Sidebar/                  # Multi-account list, active L/R tags, Copy/Move switch, Settings button
 │   │   └── TransferToast/            # Floating activity queue (Copy / Move / Delete / Rename)
 │   ├── hooks/
-│   │   ├── useDriveItems.js          # OneDrive data hook (with refreshKey)
-│   │   └── useGoogleDriveItems.js    # Google Drive data hook (with refreshKey & 401 expiry callback)
+│   │   ├── useDriveItems.js          # OneDrive paginated data hook (@odata.nextLink, loadMore, loadAll)
+│   │   └── useGoogleDriveItems.js    # Google Drive paginated data hook (nextPageToken, loadMore, loadAll, 401 callback)
 │   └── utils/
 │       ├── fileIcons.js              # Icon & label mapping (MS + Google Workspace)
 │       ├── formatters.js             # Byte size & ISO date formatters
@@ -157,7 +157,6 @@ onedrive-explorer/
 
 ## Known Limitations & Future Roadmap
 
-- **Pagination**: Directory listings currently load the first 200 items (`$top=200` / `pageSize=200`); `@odata.nextLink` and `nextPageToken` pagination is planned next.
 - **Vercel Serverless Limits**: Free Vercel Hobby plan functions have a 60s execution cap (`maxDuration: 60`) and payload limits; very large files transfer best on local Vite or upgraded serverless tiers.
 - **Google OAuth Testing Mode**: While the Google Cloud OAuth app is in **Testing** mode, test users must be listed under **Google Auth Platform → Audience** and Google expires refresh tokens after **7 days** (publishing the app removes this 7-day limit).
-- **Upcoming Features**: Search & filtering, pagination, New Folder creation, file preview/download, and desktop packaging.
+- **Upcoming Features**: Search & filtering, New Folder creation, local file upload/download, folder compare/sync, file preview, and desktop packaging.
