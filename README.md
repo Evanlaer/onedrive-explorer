@@ -4,7 +4,10 @@ A premium, dual-pane file explorer built with **React + Vite**. Authenticate wit
 
 ## Features
 - **Dual-Pane Layout**: Browse OneDrive and Google Drive simultaneously with independent breadcrumbs and refresh controls.
-- **Independent Auth**: Sign in and out of each account separately using Microsoft MSAL (PKCE) and Google Identity Services (GIS), with automatic sign-in recovery when Google's 1-hour token expires.
+- **Independent Auth & Automatic Reconnection (Connection Settings)**:
+  - Open **Connection Settings** in the sidebar to store OneDrive and Google Drive connection parameters (`Auto-connect on startup`, optional Azure/Google Client ID overrides, Microsoft authority, and default Copy/Move mode).
+  - **OneDrive** persists sessions via Microsoft MSAL (`localStorage` + silent refresh / `ssoSilent`) when auto-connect is enabled.
+  - **Google Drive** uses an OAuth 2.0 refresh-token flow via `/api/google-auth` (both locally in Vite and on Vercel) so Google Drive silently reconnects on startup and renews before expiry with zero popups (falls back gracefully to standard 1-hour GIS tokens if `GOOGLE_CLIENT_SECRET` is not set).
 - **Multi-Select & Batch Drag & Drop (Copy & Move)**:
   - Select single or multiple files and folders via checkboxes, **Select All**, `Ctrl/Cmd+Click`, or `Shift+Click` range selection (`Esc` to clear).
   - Drag one or many selected items between OneDrive and Google Drive in either direction — drop into the open folder or directly onto a target subfolder row.
@@ -29,6 +32,7 @@ A premium, dual-pane file explorer built with **React + Vite**. Authenticate wit
    ```env
    VITE_CLIENT_ID=your_azure_client_id
    VITE_GOOGLE_CLIENT_ID=your_google_client_id
+   GOOGLE_CLIENT_SECRET=your_google_client_secret # optional, enables silent Google auto-reconnect
    ```
 
 3. **Required OAuth Scopes**:
@@ -45,16 +49,16 @@ A premium, dual-pane file explorer built with **React + Vite**. Authenticate wit
    Detailed specifications and architecture diagrams are in [docs/](./docs/) ([APPLICATION_SPEC.md](./docs/APPLICATION_SPEC.md), [ARCHITECTURE.md](./docs/ARCHITECTURE.md)).
 
 ## Deploying to Vercel (Free, No Local Server Needed)
-This repository is pre-configured for **Vercel** (`vercel.json` + `api/transfer-file.js` serverless relay):
+This repository is pre-configured for **Vercel** (`vercel.json` + `api/transfer-file.js` + `api/google-auth.js` serverless functions):
 1. Import `Evanlaer/onedrive-explorer` on [vercel.com](https://vercel.com/new).
-2. Add environment variables `VITE_CLIENT_ID` and `VITE_GOOGLE_CLIENT_ID` in Vercel Project Settings.
+2. Add environment variables `VITE_CLIENT_ID`, `VITE_GOOGLE_CLIENT_ID`, and (for automatic Google Drive reconnection) `GOOGLE_CLIENT_SECRET` in Vercel Project Settings.
 3. Click **Deploy** to get your HTTPS URL (e.g. `https://your-app.vercel.app`).
 4. Add your Vercel URL to:
    - **Azure Portal** → App Registration → **Authentication** → **Single-page application (SPA) Redirect URIs**.
    - **Google Cloud Console** → **OAuth 2.0 Client ID** → **Authorized JavaScript origins**.
 
 ## Security & Authentication
-- **OneDrive**: Microsoft MSAL (OAuth 2.0 Authorization Code + PKCE).
-- **Google Drive**: Google Identity Services (GIS Token Client).
-- Tokens are stored in `sessionStorage` only; no client secrets are stored in the repository.
-- The local transfer relay only accepts HTTPS URLs on allowlisted Microsoft/OneDrive and Google Drive domains.
+- **OneDrive**: Microsoft MSAL (OAuth 2.0 Authorization Code + PKCE). Uses `localStorage` when Auto-Connect is enabled in Connection Settings, or `sessionStorage` when disabled.
+- **Google Drive**: Google Identity Services (GIS Authorization Code popup + `/api/google-auth` refresh token exchange when `GOOGLE_CLIENT_SECRET` is configured, with automatic fallback to standard GIS Token Client).
+- No secrets are committed to the repository; `GOOGLE_CLIENT_SECRET` stays server-side when configured via `.env` or Vercel Environment Variables.
+- The transfer relay only accepts HTTPS URLs on allowlisted Microsoft/OneDrive and Google Drive domains.

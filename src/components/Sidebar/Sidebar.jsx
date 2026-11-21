@@ -1,5 +1,5 @@
 import './Sidebar.css';
-import { FiCloud, FiCopy, FiMove } from 'react-icons/fi';
+import { FiCloud, FiCopy, FiMove, FiSettings } from 'react-icons/fi';
 
 export default function Sidebar({
   userProfile,
@@ -9,6 +9,10 @@ export default function Sidebar({
   transferMode = 'copy',
   onTransferModeChange,
   canTransfer = false,
+  autoConnectOneDrive = true,
+  autoConnectGoogle = true,
+  googleHasRefreshToken = false,
+  onOpenSettings,
 }) {
   const initials = userProfile?.displayName
     ? userProfile.displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
@@ -106,6 +110,25 @@ export default function Sidebar({
             ? 'Drag files or folders across panes. Hold Shift while dropping to switch Copy / Move.'
             : 'Sign in to both clouds to drag & drop files or folders between them.'}
         </p>
+      </div>
+
+      {/* Settings Trigger */}
+      <div className="sidebar-settings-wrap">
+        <button
+          type="button"
+          className="sidebar-settings-btn"
+          onClick={onOpenSettings}
+        >
+          <FiSettings size={15} className="sidebar-settings-icon" />
+          <span className="sidebar-settings-label">Connection Settings</span>
+          {(autoConnectOneDrive || (autoConnectGoogle && googleHasRefreshToken)) && (
+            <span
+              className="sidebar-settings-dot"
+              title="Auto-connect enabled"
+              aria-hidden="true"
+            />
+          )}
+        </button>
       </div>
 
       <div className="sidebar-footer">

@@ -6,7 +6,7 @@
 
 **Application Name:** Multi-Cloud Explorer (formerly OneDrive Explorer)  
 **Vision:** A premium, dual-pane web application that allows users to browse, organize, and transfer files and folders seamlessly between OneDrive and Google Drive side-by-side.  
-**Phase:** v1.3 — Multi-Select Batch Transfers & File Management (Supports multi-file/folder selection, batch Drag & Drop Copy/Move, Delete with confirmation, Rename, and graceful Google session renewal).
+**Phase:** v1.4 — Connection Settings & Persistent Auto-Connect (Adds Connection Settings modal for OneDrive & Google Drive parameters, persistent MSAL `localStorage` + `ssoSilent` reconnection, and `/api/google-auth` OAuth refresh-token auto-connect for Google Drive).
 
 ---
 
@@ -41,9 +41,10 @@
 | FR-19 | As a user, I want to **select multiple files and folders** in a folder (via checkboxes, Select All, `Ctrl/Cmd+Click`, `Shift+Click`, and `Esc` to clear) and **drag-and-drop them as a batch**. | Must-Have | Implemented |
 | FR-20 | As a user, I want to **delete one or multiple selected items** in either OneDrive or Google Drive via a **Delete** button (or `Del` key) with a confirmation dialog sending them to Recycle Bin / Trash. | Must-Have | Implemented |
 | FR-21 | As a user, I want to **rename a selected file or folder** in either OneDrive or Google Drive via a **Rename** button (or `F2` key) with extension-preserving selection and inline validation. | Must-Have | Implemented |
+| FR-22 | As a user, I want a **Connection Settings modal** to store OneDrive and Google Drive connection parameters (Auto-Connect toggles, optional Client ID / Authority / Secret overrides, and default Copy/Move mode) so both clouds reconnect automatically every time the app starts. | Must-Have | Implemented |
 
 ### Happy Path
-1. User signs into OneDrive (`Files.ReadWrite`) and Google Drive (`drive`).
+1. **One-Time Connection Setup**: User signs into OneDrive (`Files.ReadWrite`) and Google Drive (`drive`) once (from the panes or via **Connection Settings** in the sidebar). With **Auto-connect on startup** enabled, future launches reconnect both clouds automatically without repeated sign-in prompts.
 2. User navigates folders independently in either pane.
 3. **Multi-Select & Batch Transfer**: User checks several files/folders (or uses `Ctrl+Click` / `Shift+Click` / Select All) and drags any selected item to the opposite pane (or onto a specific subfolder):
    - A custom `N items` drag badge and live drop banner preview `Copy N items` or `Move N items` (`Hold Shift` switches Copy ↔ Move).
@@ -57,12 +58,12 @@
 
 | Category | Requirement |
 |---|---|
-| **Auth Security & Expiry** | Uses **Microsoft MSAL (PKCE)** with `User.Read` + `Files.ReadWrite`, and **Google GIS (Token Client)** with `https://www.googleapis.com/auth/drive`. Tokens stay in `sessionStorage`. Expired Google tokens (`401`) automatically reset the Google pane to a clean one-click Sign-In state. |
-| **Performance & Large Files** | Both panes load asynchronously with independent skeleton states. Files transfer via a host-allowlisted local Vite Node streaming relay (`/api/transfer-file`) using **5 MiB resumable chunks**, avoiding browser CORS restrictions and ~10 MB response body caps. |
+| **Auth Security & Auto-Connect** | Uses **Microsoft MSAL v5 (PKCE Popup + Redirect Bridge)** with `User.Read` + `Files.ReadWrite`, and **Google GIS (Authorization Code Flow + `/api/google-auth`)** with `https://www.googleapis.com/auth/drive`. When Auto-Connect is enabled in Connection Settings, sessions persist in `localStorage` and refresh silently on startup and before expiry (`GOOGLE_CLIENT_SECRET` stays server-side via `.env` / Vercel). Disabling Auto-Connect restricts tokens to `sessionStorage`. |
+| **Performance & Large Files** | Both panes load asynchronously with independent skeleton states. Files transfer via a host-allowlisted Node / Vercel streaming relay (`/api/transfer-file`) using **5 MiB resumable chunks**, avoiding browser CORS restrictions and ~10 MB response body caps. |
 | **Batch Concurrency** | Multi-file Copy/Move runs up to 2 simultaneous transfers; multi-item Delete runs up to 3 simultaneous requests, preventing API throttling while keeping the UI responsive. |
 | **Data Safety** | Delete and Move operations send items to OneDrive Recycle Bin / Google Drive Trash (recoverable). Folder moves only remove the source folder if 100% of nested files succeeded with zero warnings. |
 | **Filename Compatibility** | Invalid OneDrive filename characters (`\ / : * ? " < > |`) are blocked inline during Rename and automatically sanitized to `_` during cross-cloud upload. |
-| **State Isolation** | Navigation and selection state for each pane are localized inside `CloudPane`; cross-cloud drag, modals, and activity queue state are coordinated from `App.jsx`. |
+| **State Isolation** | Navigation and selection state for each pane are localized inside `CloudPane`; cross-cloud drag, settings, silent refresh, modals, and activity queue state are coordinated from `App.jsx`. |
 
 ---
 
@@ -71,10 +72,10 @@
 | Layer | Technology | Reason |
 |---|---|---|
 | **Core** | React 19 + Vite 8 | Fast, modern, easily portable. |
-| **OneDrive Auth** | `@azure/msal-browser` + `@azure/msal-react` | Official Microsoft OAuth 2.0 PKCE client. |
-| **Google Auth** | Google Identity Services (GIS) | Modern browser Google OAuth token client. |
+| **OneDrive Auth** | `@azure/msal-browser` v5 + `@azure/msal-react` | Official Microsoft OAuth 2.0 PKCE client with redirect-bridge popup & `ssoSilent` support. |
+| **Google Auth** | Google Identity Services (GIS) + `/api/google-auth` | OAuth 2.0 Authorization Code popup with server-side refresh-token renewal (falls back to GIS Token Client). |
 | **APIs** | MS Graph v1.0 + Google Drive v3 | Official cloud provider REST APIs (including resumable upload sessions). |
-| **Local Relay** | Vite Server Middleware (`vite.config.js`) | Zero-dependency Node streaming relay for large cross-cloud transfers & CORS-free downloads (with browser fallback for static deployments). |
+| **Backend Endpoints** | Shared Node handlers (`server/`) for Vite Middleware & Vercel Serverless (`api/`) | Zero-dependency streaming transfer relay (`/api/transfer-file`) and Google OAuth token handler (`/api/google-auth`). |
 | **Styling** | Vanilla CSS (CSS Variables) | Azure Horizon dark theme without heavy UI framework bloat. |
 
 ---

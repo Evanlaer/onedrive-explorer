@@ -6,6 +6,9 @@
   "functions": {
     "api/transfer-file.js": {
       "maxDuration": 60
+    },
+    "api/google-auth.js": {
+      "maxDuration": 15
     }
   },
   "rewrites": [

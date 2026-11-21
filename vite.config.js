@@ -1,17 +1,23 @@
-import { defineConfig } from 'vite';
+import process from 'node:process';
+import { defineConfig, loadEnv } from 'vite';
 import react from '@vitejs/plugin-react';
 import { handleTransferFileRequest } from './server/transferRelay.js';
+import { handleGoogleAuthRequest } from './server/googleAuthHandler.js';
 
-function cloudTransferRelayPlugin() {
+function cloudBackendPlugin(env) {
   const middleware = (req, res, next) => {
-    if (req.url !== '/api/transfer-file') {
-      return next();
+    const pathname = (req.url || '').split('?')[0];
+    if (pathname === '/api/transfer-file') {
+      return handleTransferFileRequest(req, res);
     }
-    return handleTransferFileRequest(req, res);
+    if (pathname === '/api/google-auth') {
+      return handleGoogleAuthRequest(req, res, env);
+    }
+    return next();
   };
 
   return {
-    name: 'cloud-transfer-relay',
+    name: 'cloud-backend-api',
     configureServer(server) {
       server.middlewares.use(middleware);
     },
@@ -22,6 +28,9 @@ function cloudTransferRelayPlugin() {
 }
 
 // https://vite.dev/config/
-export default defineConfig({
-  plugins: [react(), cloudTransferRelayPlugin()],
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
+  return {
+    plugins: [react(), cloudBackendPlugin(env)],
+  };
 });

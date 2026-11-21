@@ -7,9 +7,16 @@ import CloudPane from './components/CloudPane/CloudPane';
 import TransferToast from './components/TransferToast/TransferToast';
 import ConfirmModal from './components/ConfirmModal/ConfirmModal';
 import RenameModal from './components/RenameModal/RenameModal';
-import { login } from './auth/authService';
+import SettingsModal from './components/SettingsModal/SettingsModal';
+import { login, logout } from './auth/authService';
 import { getUserProfile } from './api/graphService';
-import { initGoogleAuth, loginGoogle, logoutGoogle } from './auth/googleAuthService';
+import {
+  fetchGoogleAuthStatus,
+  loginGoogleWithCode,
+  loginGoogleWithToken,
+  refreshGoogleAccessToken,
+  logoutGoogle,
+} from './auth/googleAuthService';
 import { getGoogleUserProfile } from './api/googleDriveService';
 import {
   transferItem,
@@ -17,21 +24,74 @@ import {
   renameCloudItem,
   isItemFolder,
 } from './api/transferService';
+import {
+  loadSettings,
+  saveSettings,
+  resetAllSettings,
+  getEffectiveGoogleConfig,
+  loadGoogleSession,
+  saveGoogleSession,
+  clearGoogleSession,
+  clearMsalLocalCache,
+  isAccessTokenFresh,
+} from './utils/settingsStorage';
 
 const BATCH_CONCURRENCY = 2;
 const DELETE_CONCURRENCY = 3;
+const GOOGLE_REFRESH_LEAD_MS = 3 * 60 * 1000; // Refresh 3 minutes before expiry
 
 export default function App() {
   const { instance, inProgress } = useMsal();
   const isOneDriveAuth = useIsAuthenticated();
 
-  // Google Auth State
-  const [googleToken, setGoogleToken] = useState(sessionStorage.getItem('google_token'));
+  // Persisted Connection Settings
+  const [settings, setSettings] = useState(() => loadSettings());
+  const [settingsOpen, setSettingsOpen] = useState(false);
+
+  // Google Auth State (restored from localStorage/sessionStorage)
+  const [googleSession, setGoogleSession] = useState(() => loadGoogleSession());
+  const [googleAuthStatus, setGoogleAuthStatus] = useState({
+    available: false,
+    configured: false,
+    hasServerClientId: false,
+    hasServerClientSecret: false,
+  });
+  const [googleConnecting, setGoogleConnecting] = useState(() => {
+    const initialSettings = loadSettings();
+    const initialSession = loadGoogleSession();
+    return Boolean(
+      initialSettings.google.autoConnect &&
+        initialSession?.refreshToken &&
+        !isAccessTokenFresh(initialSession)
+    );
+  });
+  const [googleAuthNotice, setGoogleAuthNotice] = useState(null);
+  const [oneDriveConnecting, setOneDriveConnecting] = useState(false);
+  const [oneDriveAuthNotice, setOneDriveAuthNotice] = useState(null);
   const [googleProfile, setGoogleProfile] = useState(null);
   const [msProfile, setMsProfile] = useState(null);
 
+  const googleRefreshPromiseRef = useRef(null);
+  const settingsRef = useRef(settings);
+  const googleSessionRef = useRef(googleSession);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
+
+  useEffect(() => {
+    googleSessionRef.current = googleSession;
+  }, [googleSession]);
+
+  const googleToken = isAccessTokenFresh(googleSession, 10_000)
+    ? googleSession.accessToken
+    : null;
+  const googleHasRefreshToken = Boolean(googleSession?.refreshToken);
+
   // Cross-Cloud Transfer & Delete State
-  const [transferMode, setTransferMode] = useState('copy'); // 'copy' | 'move'
+  const [transferMode, setTransferMode] = useState(
+    () => loadSettings().general.defaultTransferMode
+  );
   const [dragState, setDragState] = useState(null); // { sourceCloud, items } | null
   const clearSourceSelectionRef = useRef(null);
   const [transfers, setTransfers] = useState([]);
@@ -42,21 +102,141 @@ export default function App() {
 
   const canTransfer = isOneDriveAuth && !!googleToken;
 
-  // Initialize Google Auth on mount
-  useEffect(() => {
-    initGoogleAuth((token) => {
-      setGoogleToken(token);
-      sessionStorage.setItem('google_token', token);
-    });
+  // Deduplicated silent Google token refresh helper
+  const attemptSilentGoogleRefresh = useCallback(async (explicitRefreshToken) => {
+    if (googleRefreshPromiseRef.current) {
+      return googleRefreshPromiseRef.current;
+    }
+
+    const activeSettings = settingsRef.current;
+    const currentSession = googleSessionRef.current;
+    const refreshToken = explicitRefreshToken || currentSession?.refreshToken;
+
+    if (!refreshToken || !activeSettings.google.autoConnect) {
+      return null;
+    }
+
+    const effective = getEffectiveGoogleConfig(activeSettings);
+
+    const promise = (async () => {
+      try {
+        const refreshed = await refreshGoogleAccessToken({
+          refreshToken,
+          clientId: effective.clientId,
+          clientSecret: effective.clientSecretOverride,
+        });
+        saveGoogleSession(refreshed, true);
+        setGoogleSession(refreshed);
+        setGoogleAuthNotice(null);
+        return refreshed;
+      } catch (err) {
+        if (err?.code === 'invalid_grant') {
+          clearGoogleSession();
+          setGoogleSession(null);
+          setGoogleProfile(null);
+          setGoogleAuthNotice(
+            'Your saved Google session expired or was revoked. Sign in once to re-enable auto-connect.'
+          );
+        } else if (err?.code === 'MISSING_CLIENT_SECRET') {
+          setGoogleAuthNotice(
+            'Add GOOGLE_CLIENT_SECRET in .env / Vercel or Connection Settings to auto-reconnect Google Drive.'
+          );
+        } else {
+          setGoogleAuthNotice(err?.message || 'Automatic Google reconnection failed.');
+        }
+        return null;
+      } finally {
+        googleRefreshPromiseRef.current = null;
+      }
+    })();
+
+    googleRefreshPromiseRef.current = promise;
+    return promise;
   }, []);
 
-  // Fetch Profiles
+  // Check server /api/google-auth status & auto-refresh Google session on mount
+  useEffect(() => {
+    let cancelled = false;
+
+    fetchGoogleAuthStatus().then((status) => {
+      if (!cancelled) {
+        setGoogleAuthStatus(status);
+      }
+    });
+
+    const initialSettings = settingsRef.current;
+    const initialSession = googleSessionRef.current;
+    if (
+      initialSettings.google.autoConnect &&
+      initialSession?.refreshToken &&
+      !isAccessTokenFresh(initialSession)
+    ) {
+      attemptSilentGoogleRefresh(initialSession.refreshToken).finally(() => {
+        if (!cancelled) {
+          setGoogleConnecting(false);
+        }
+      });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  }, [attemptSilentGoogleRefresh]);
+
+  // Proactive background refresh before the 1-hour Google access token expires
+  useEffect(() => {
+    if (
+      !settings.google.autoConnect ||
+      !googleSession?.refreshToken ||
+      !googleSession?.expiresAt
+    ) {
+      return undefined;
+    }
+
+    const delayMs = Math.max(
+      5_000,
+      googleSession.expiresAt - Date.now() - GOOGLE_REFRESH_LEAD_MS
+    );
+
+    const timerId = window.setTimeout(() => {
+      attemptSilentGoogleRefresh(googleSession.refreshToken);
+    }, delayMs);
+
+    return () => window.clearTimeout(timerId);
+  }, [
+    settings.google.autoConnect,
+    googleSession?.refreshToken,
+    googleSession?.expiresAt,
+    attemptSilentGoogleRefresh,
+  ]);
+
+  // Fetch OneDrive Profile & save account hint for future auto-connect
   useEffect(() => {
     if (!isOneDriveAuth) return;
     let cancelled = false;
     getUserProfile(instance)
       .then((profile) => {
-        if (!cancelled) setMsProfile(profile);
+        if (cancelled) return;
+        setMsProfile(profile);
+
+        const account = instance.getActiveAccount();
+        const email =
+          account?.username || profile?.mail || profile?.userPrincipalName || '';
+        const displayName = profile?.displayName || '';
+        if (
+          email !== settingsRef.current.onedrive.savedEmail ||
+          displayName !== settingsRef.current.onedrive.savedDisplayName
+        ) {
+          const next = saveSettings({
+            ...settingsRef.current,
+            onedrive: {
+              ...settingsRef.current.onedrive,
+              savedEmail: email,
+              savedDisplayName: displayName,
+            },
+          });
+          setSettings(next);
+        }
       })
       .catch(() => {});
     return () => {
@@ -64,42 +244,286 @@ export default function App() {
     };
   }, [isOneDriveAuth, instance]);
 
+  // Fetch Google Profile & save account hint for future auto-connect
   useEffect(() => {
     if (!googleToken) return;
     let cancelled = false;
     getGoogleUserProfile(googleToken)
       .then((profile) => {
-        if (!cancelled) setGoogleProfile(profile);
+        if (cancelled) return;
+        setGoogleProfile(profile);
+        setGoogleAuthNotice(null);
+
+        const email = profile?.emailAddress || '';
+        const displayName = profile?.displayName || '';
+        if (
+          email !== settingsRef.current.google.savedEmail ||
+          displayName !== settingsRef.current.google.savedDisplayName
+        ) {
+          const next = saveSettings({
+            ...settingsRef.current,
+            google: {
+              ...settingsRef.current.google,
+              savedEmail: email,
+              savedDisplayName: displayName,
+            },
+          });
+          setSettings(next);
+        }
       })
       .catch(() => {
-        if (!cancelled) {
-          setGoogleToken(null);
-          sessionStorage.removeItem('google_token');
+        if (cancelled) return;
+        const currentSession = googleSessionRef.current;
+        if (currentSession?.refreshToken && settingsRef.current.google.autoConnect) {
+          setGoogleConnecting(true);
+          attemptSilentGoogleRefresh(currentSession.refreshToken).finally(() => {
+            if (!cancelled) setGoogleConnecting(false);
+          });
+        } else {
+          clearGoogleSession();
+          setGoogleSession(null);
+          setGoogleProfile(null);
         }
       });
     return () => {
       cancelled = true;
     };
-  }, [googleToken]);
+  }, [googleToken, attemptSilentGoogleRefresh]);
 
   const activeMsProfile = isOneDriveAuth ? msProfile : null;
   const activeGoogleProfile = googleToken ? googleProfile : null;
 
-  const handleLogoutOneDrive = () => {
-    instance.logoutRedirect();
-  };
+  const handleLoginOneDrive = useCallback(async () => {
+    setOneDriveAuthNotice(null);
+    setOneDriveConnecting(true);
+    try {
+      await login(instance, {
+        loginHint: settingsRef.current.onedrive.savedEmail || undefined,
+      });
+    } catch (err) {
+      if (err?.code !== 'USER_CANCELLED') {
+        console.error('[OneDrive] Sign-in failed:', err);
+        const errorCode = err?.errorCode || '';
+        const friendlyMessage =
+          errorCode === 'timed_out'
+            ? 'Microsoft sign-in timed out waiting for the login window. Allow popups or open this app directly in Chrome / Edge (embedded IDE browser tabs block login.microsoftonline.com).'
+            : err?.errorMessage ||
+              err?.message ||
+              'OneDrive sign-in failed. Check your Azure Client ID or popup blocker.';
+        setOneDriveAuthNotice(friendlyMessage);
+      }
+    } finally {
+      setOneDriveConnecting(false);
+    }
+  }, [instance]);
 
-  const handleLogoutGoogle = () => {
-    logoutGoogle(googleToken);
-    setGoogleToken(null);
-    sessionStorage.removeItem('google_token');
+  const handleLogoutOneDrive = useCallback(async () => {
+    setOneDriveAuthNotice(null);
+    const next = saveSettings({
+      ...settingsRef.current,
+      onedrive: {
+        ...settingsRef.current.onedrive,
+        savedEmail: '',
+        savedDisplayName: '',
+      },
+    });
+    setSettings(next);
+    try {
+      await logout(instance);
+      setMsProfile(null);
+    } catch (err) {
+      console.error('[OneDrive] Sign-out failed:', err);
+    }
+  }, [instance]);
+
+  const handleLoginGoogle = useCallback(
+    async (draftGoogleOverrides) => {
+      setGoogleAuthNotice(null);
+
+      let activeSettings = settingsRef.current;
+      if (
+        draftGoogleOverrides &&
+        typeof draftGoogleOverrides === 'object' &&
+        typeof draftGoogleOverrides.autoConnect === 'boolean'
+      ) {
+        activeSettings = saveSettings({
+          ...activeSettings,
+          google: {
+            ...activeSettings.google,
+            autoConnect: draftGoogleOverrides.autoConnect,
+            clientIdOverride: draftGoogleOverrides.clientIdOverride ?? activeSettings.google.clientIdOverride,
+            clientSecretOverride:
+              draftGoogleOverrides.clientSecretOverride ?? activeSettings.google.clientSecretOverride,
+          },
+        });
+        settingsRef.current = activeSettings;
+        setSettings(activeSettings);
+      }
+
+      const effective = getEffectiveGoogleConfig(activeSettings);
+
+    if (!effective.clientId) {
+      setGoogleAuthNotice(
+        'Google Client ID is missing. Add VITE_GOOGLE_CLIENT_ID to .env or enter it in Connection Settings.'
+      );
+      return;
+    }
+
+    const canUseRefreshFlow =
+      activeSettings.google.autoConnect &&
+      (googleAuthStatus.hasServerClientSecret || Boolean(effective.clientSecretOverride));
+
+    setGoogleConnecting(true);
+    try {
+      let nextSession;
+      if (canUseRefreshFlow) {
+        const result = await loginGoogleWithCode({
+          clientId: effective.clientId,
+          clientSecret: effective.clientSecretOverride,
+          hint: activeSettings.google.savedEmail,
+        });
+        nextSession = {
+          accessToken: result.accessToken,
+          expiresAt: result.expiresAt,
+          refreshToken: result.refreshToken || googleSessionRef.current?.refreshToken || null,
+        };
+        if (!nextSession.refreshToken) {
+          setGoogleAuthNotice(
+            'Connected, but Google did not issue a refresh token. Disconnect and reconnect if auto-connect does not persist.'
+          );
+        }
+      } else {
+        nextSession = await loginGoogleWithToken({
+          clientId: effective.clientId,
+          hint: activeSettings.google.savedEmail,
+        });
+      }
+
+      saveGoogleSession(nextSession, activeSettings.google.autoConnect);
+      setGoogleSession(nextSession);
+    } catch (err) {
+      if (err?.code !== 'POPUP_CLOSED') {
+        setGoogleAuthNotice(err?.message || 'Google Drive sign-in failed.');
+      }
+    } finally {
+      setGoogleConnecting(false);
+    }
+  }, [googleAuthStatus.hasServerClientSecret]);
+
+  const handleLogoutGoogle = useCallback(() => {
+    const current = googleSessionRef.current;
+    logoutGoogle({
+      accessToken: current?.accessToken,
+      refreshToken: current?.refreshToken,
+    });
+    clearGoogleSession();
+    setGoogleSession(null);
     setGoogleProfile(null);
-  };
+    setGoogleAuthNotice(null);
+
+    const next = saveSettings({
+      ...settingsRef.current,
+      google: {
+        ...settingsRef.current.google,
+        savedEmail: '',
+        savedDisplayName: '',
+      },
+    });
+    setSettings(next);
+  }, []);
 
   const handleGoogleAuthExpired = useCallback(() => {
-    setGoogleToken(null);
-    sessionStorage.removeItem('google_token');
+    const current = googleSessionRef.current;
+    if (current?.refreshToken && settingsRef.current.google.autoConnect) {
+      setGoogleConnecting(true);
+      attemptSilentGoogleRefresh(current.refreshToken).finally(() => {
+        setGoogleConnecting(false);
+      });
+      return;
+    }
+
+    clearGoogleSession();
+    setGoogleSession(null);
     setGoogleProfile(null);
+    setGoogleAuthNotice(
+      'Your Google Drive session expired (tokens last 1 hour). Sign in again, or configure GOOGLE_CLIENT_SECRET in Connection Settings for automatic reconnection.'
+    );
+  }, [attemptSilentGoogleRefresh]);
+
+  const handleTransferModeChange = useCallback((mode) => {
+    const normalized = mode === 'move' ? 'move' : 'copy';
+    setTransferMode(normalized);
+    const next = saveSettings({
+      ...settingsRef.current,
+      general: {
+        ...settingsRef.current.general,
+        defaultTransferMode: normalized,
+      },
+    });
+    setSettings(next);
+  }, []);
+
+  const handleSaveSettings = useCallback((draft, { reloadForOneDrive = false } = {}) => {
+    const prevSettings = settingsRef.current;
+    const saved = saveSettings({
+      onedrive: {
+        ...prevSettings.onedrive,
+        autoConnect: draft.onedrive.autoConnect,
+        clientIdOverride: draft.onedrive.clientIdOverride,
+        authority: draft.onedrive.authority,
+      },
+      google: {
+        ...prevSettings.google,
+        autoConnect: draft.google.autoConnect,
+        clientIdOverride: draft.google.clientIdOverride,
+        clientSecretOverride: draft.google.clientSecretOverride,
+      },
+      general: {
+        defaultTransferMode: draft.general.defaultTransferMode,
+      },
+    });
+
+    setSettings(saved);
+    setTransferMode(saved.general.defaultTransferMode);
+
+    // Sync Google session storage with the updated auto-connect setting
+    const currentGoogle = googleSessionRef.current;
+    if (currentGoogle) {
+      if (!saved.google.autoConnect) {
+        const trimmed = {
+          accessToken: currentGoogle.accessToken,
+          expiresAt: currentGoogle.expiresAt,
+          refreshToken: null,
+        };
+        saveGoogleSession(trimmed, false);
+        setGoogleSession(trimmed);
+      } else {
+        saveGoogleSession(currentGoogle, true);
+      }
+    }
+
+    // Clear persistent MSAL cache if OneDrive auto-connect was switched off
+    if (!saved.onedrive.autoConnect && prevSettings.onedrive.autoConnect) {
+      clearMsalLocalCache();
+    }
+
+    setSettingsOpen(false);
+
+    if (reloadForOneDrive) {
+      window.location.reload();
+    }
+  }, []);
+
+  const handleResetSettings = useCallback(() => {
+    const current = googleSessionRef.current;
+    if (current) {
+      logoutGoogle({
+        accessToken: current.accessToken,
+        refreshToken: current.refreshToken,
+      });
+    }
+    resetAllSettings();
+    window.location.reload();
   }, []);
 
   const refreshCloud = useCallback((cloud) => {
@@ -390,8 +814,12 @@ export default function App() {
         onLogoutOneDrive={handleLogoutOneDrive}
         onLogoutGoogle={handleLogoutGoogle}
         transferMode={transferMode}
-        onTransferModeChange={setTransferMode}
+        onTransferModeChange={handleTransferModeChange}
         canTransfer={canTransfer}
+        autoConnectOneDrive={settings.onedrive.autoConnect}
+        autoConnectGoogle={settings.google.autoConnect}
+        googleHasRefreshToken={googleHasRefreshToken}
+        onOpenSettings={() => setSettingsOpen(true)}
       />
 
       {/* Left Pane: OneDrive */}
@@ -400,7 +828,10 @@ export default function App() {
         type="onedrive"
         title="OneDrive"
         isAuthenticated={isOneDriveAuth}
-        onLogin={() => login(instance)}
+        isConnecting={oneDriveConnecting}
+        authNotice={oneDriveAuthNotice}
+        onLogin={handleLoginOneDrive}
+        onOpenSettings={() => setSettingsOpen(true)}
         refreshKey={oneDriveRefreshKey}
         onRefresh={() => refreshCloud('onedrive')}
         canTransfer={canTransfer}
@@ -419,8 +850,11 @@ export default function App() {
         type="google"
         title="Google Drive"
         isAuthenticated={!!googleToken}
+        isConnecting={googleConnecting}
+        authNotice={googleAuthNotice}
         accessToken={googleToken}
-        onLogin={() => loginGoogle()}
+        onLogin={handleLoginGoogle}
+        onOpenSettings={() => setSettingsOpen(true)}
         refreshKey={googleRefreshKey}
         onRefresh={() => refreshCloud('google')}
         canTransfer={canTransfer}
@@ -450,6 +884,28 @@ export default function App() {
         pendingRename={pendingRename}
         onCancel={handleCancelRename}
         onSubmit={handleSubmitRename}
+      />
+
+      <SettingsModal
+        isOpen={settingsOpen}
+        settings={settings}
+        isOneDriveAuth={isOneDriveAuth}
+        oneDriveConnecting={oneDriveConnecting}
+        oneDriveAuthNotice={oneDriveAuthNotice}
+        msProfile={activeMsProfile}
+        isGoogleAuth={!!googleToken}
+        googleProfile={activeGoogleProfile}
+        googleHasRefreshToken={googleHasRefreshToken}
+        googleAuthStatus={googleAuthStatus}
+        googleConnecting={googleConnecting}
+        googleAuthNotice={googleAuthNotice}
+        onSave={handleSaveSettings}
+        onReset={handleResetSettings}
+        onClose={() => setSettingsOpen(false)}
+        onConnectOneDrive={handleLoginOneDrive}
+        onDisconnectOneDrive={handleLogoutOneDrive}
+        onConnectGoogle={handleLoginGoogle}
+        onDisconnectGoogle={handleLogoutGoogle}
       />
     </div>
   );

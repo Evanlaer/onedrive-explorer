@@ -218,14 +218,49 @@
 }
 
 .pane-auth-card {
-  padding: 40px;
+  padding: 36px 40px;
+  max-width: 360px;
   background: var(--surface-high);
   border-radius: var(--radius-lg);
   border: 1px solid var(--outline-variant);
 }
 
-.login-btn-small {
+.pane-auth-connecting {
   margin-top: 16px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--primary);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.pane-auth-sub {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.pane-auth-notice {
+  margin-top: 12px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  background: rgba(245, 166, 35, 0.12);
+  border: 1px solid rgba(245, 166, 35, 0.28);
+  color: #f9cf82;
+  font-size: 0.74rem;
+  line-height: 1.45;
+}
+
+.pane-auth-actions {
+  margin-top: 16px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.login-btn-small {
   padding: 8px 26px;
   background: var(--primary-container);
   color: white;
@@ -237,4 +272,23 @@
 
 .login-btn-small:hover {
   background: #005a9e;
+}
+
+.pane-settings-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.75rem;
+  font-weight: 500;
+  padding: 4px 8px;
+  border-radius: var(--radius-sm);
+  transition: color var(--transition-fast), background var(--transition-fast);
+}
+
+.pane-settings-link:hover {
+  color: var(--primary);
+  background: var(--surface-bright);
 }

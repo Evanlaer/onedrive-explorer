@@ -1,6 +1,14 @@
 import './CloudPane.css';
 import { useState, useMemo, useEffect } from 'react';
-import { FiRefreshCw, FiCopy, FiMove, FiX, FiTrash2, FiEdit2 } from 'react-icons/fi';
+import {
+  FiRefreshCw,
+  FiCopy,
+  FiMove,
+  FiX,
+  FiTrash2,
+  FiEdit2,
+  FiSettings,
+} from 'react-icons/fi';
 import Header from '../Header/Header';
 import FileList from '../FileList/FileList';
 import { useDriveItems } from '../../hooks/useDriveItems';
@@ -39,8 +47,11 @@ export default function CloudPane({
   type,
   title,
   isAuthenticated,
+  isConnecting = false,
+  authNotice = null,
   accessToken,
   onLogin,
+  onOpenSettings,
   refreshKey = 0,
   onRefresh,
   canTransfer = false,
@@ -315,10 +326,35 @@ export default function CloudPane({
       <div className="cloud-pane cloud-pane--locked">
         <div className="pane-auth-card">
           <h3>{title}</h3>
-          <p>Login to browse your {title} files.</p>
-          <button className="login-btn-small" onClick={onLogin}>
-            Sign in
-          </button>
+          {isConnecting ? (
+            <>
+              <div className="pane-auth-connecting">
+                <FiRefreshCw className="pane-refresh-spin" size={16} />
+                <span>Reconnecting automatically…</span>
+              </div>
+              <p className="pane-auth-sub">Using your saved connection settings</p>
+            </>
+          ) : (
+            <>
+              <p>Login to browse your {title} files.</p>
+              {authNotice && <p className="pane-auth-notice">{authNotice}</p>}
+              <div className="pane-auth-actions">
+                <button className="login-btn-small" onClick={onLogin}>
+                  Sign in
+                </button>
+                {onOpenSettings && (
+                  <button
+                    type="button"
+                    className="pane-settings-link"
+                    onClick={onOpenSettings}
+                  >
+                    <FiSettings size={13} />
+                    <span>Connection Settings</span>
+                  </button>
+                )}
+              </div>
+            </>
+          )}
         </div>
       </div>
     );
