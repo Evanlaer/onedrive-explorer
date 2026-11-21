@@ -1,10 +1,10 @@
-# Architecture — Multi-Cloud Explorer v1.4
+# Architecture — Multi-Cloud Explorer v1.5
 
 ## Overview
 
-A **React + Vite** dual-pane web application with direct browser integration to **Microsoft Graph API (OneDrive)** and **Google Drive API v3**, paired with two lightweight, zero-dependency Node backend endpoints shared between **Vite dev/preview middleware** and **Vercel Serverless Functions**:
-- `/api/transfer-file` (`server/transferRelay.js` + `api/transfer-file.js`): streams files cloud-to-cloud with 5 MiB resumable chunks without hitting browser CORS limits or ~10 MB response body caps.
-- `/api/google-auth` (`server/googleAuthHandler.js` + `api/google-auth.js`): exchanges Google GIS authorization codes for refresh tokens and silently renews Google Drive access tokens on startup and before expiry.
+A **React + Vite** flexible dual-pane web application supporting **multiple simultaneous OneDrive and Google Drive accounts** with direct browser integration to **Microsoft Graph API (OneDrive)** and **Google Drive API v3**, paired with two lightweight, zero-dependency Node backend endpoints shared between **Vite dev/preview middleware** and **Vercel Serverless Functions**:
+- `/api/transfer-file` (`server/transferRelay.js` + `api/transfer-file.js`): streams files account-to-account (OneDrive ↔ Google Drive, OneDrive ↔ OneDrive, or Google Drive ↔ Google Drive) with 5 MiB resumable chunks without hitting browser CORS limits or ~10 MB response body caps.
+- `/api/google-auth` (`server/googleAuthHandler.js` + `api/google-auth.js`): exchanges Google GIS authorization codes for per-account refresh tokens and silently renews Google Drive access tokens on startup and before expiry.
 
 ---
 
@@ -47,20 +47,20 @@ flowchart TD
 The application uses a 3-column CSS Grid shell (`Sidebar` | `OneDrive Pane` | `Google Drive Pane`) plus floating overlays (`TransferToast`, `ConfirmModal`, `RenameModal`, `SettingsModal`).
 
 ```text
-App.jsx (Root Coordinator: Auth, Settings, Silent Refresh, Batch Drag, Workers, Modals, Refresh Keys)
-├── Sidebar (Account Profiles, Independent Logouts, Copy/Move Mode Switch, Connection Settings Trigger)
-├── OneDrive Pane (CloudPane instance: type="onedrive")
-│   ├── Header (Breadcrumbs) + Selection Pill + Rename / Delete / Refresh Actions
+App.jsx (Root Coordinator: Multi-Account Auth Maps, Silent Refresh, Settings, Batch Drag, Workers, Modals)
+├── Sidebar (All Saved OneDrive & Google Drive Accounts, Active L/R Tags, Copy/Move Switch, Settings Trigger)
+├── Left Pane (CloudPane: paneId="left", Connection Pick List for any OneDrive or Google Drive)
+│   ├── Connection Picker + Header (Breadcrumbs) + Selection Pill + Rename / Delete / Refresh Actions
 │   ├── FileList (Select-All Header) → FileItem (Checkbox, Multi-Select, Draggable, Subfolder Drop Target)
 │   └── Live Drop Preview Banner (Single or N items, Copy / Move + Shift Hint)
-├── Google Drive Pane (CloudPane instance: type="google")
-│   ├── Header (Breadcrumbs) + Selection Pill + Rename / Delete / Refresh Actions
+├── Right Pane (CloudPane: paneId="right", Connection Pick List for any OneDrive or Google Drive)
+│   ├── Connection Picker + Header (Breadcrumbs) + Selection Pill + Rename / Delete / Refresh Actions
 │   ├── FileList (Select-All Header) → FileItem (Checkbox, Multi-Select, Draggable, Subfolder Drop Target)
 │   └── Live Drop Preview Banner (Single or N items, Copy / Move + Shift Hint)
-├── TransferToast (Floating Activity Queue: Copy / Move / Delete / Rename Badges, Progress, Warnings)
+├── TransferToast (Floating Activity Queue: Copy / Move / Delete / Rename Badges, Account Names, Progress)
 ├── ConfirmModal (Single & Multi-Item Delete Confirmation Dialog)
 ├── RenameModal (Extension-Preserving Rename Dialog with Inline Validation)
-└── SettingsModal (OneDrive & Google Drive Auto-Connect, OAuth Overrides, Default Transfer Mode, Reset)
+└── SettingsModal (Add/Rename/Remove Multiple OneDrive & Google Drive Accounts, OAuth Overrides, Preferences)
 ```
 
 ### Reusable `CloudPane` Pattern
@@ -121,9 +121,10 @@ onedrive-explorer/
 │   │   ├── googleDriveService.js     # Google Drive API v3 (list, export/download, upload, folder, rename, trash)
 │   │   └── transferService.js        # Cross-cloud transfer, folder recursion, delete & rename helpers
 │   ├── auth/
-│   │   ├── authService.js            # MSAL popup-first login/logout (with redirect fallback & stale lock recovery)
-│   │   ├── msalConfig.js             # Dynamic MSAL config built from Connection Settings + .env defaults
-│   │   └── googleAuthService.js      # GIS code flow + /api/google-auth refresh + GIS token fallback
+│   │   ├── authService.js            # Multi-account MSAL login/logout & per-account token acquisition
+│   │   ├── msalConfig.js             # Dynamic per-connection MSAL config builder
+│   │   ├── msalRegistry.js           # Registry caching initialized MSAL instances per (clientId, authority, cache)
+│   │   └── googleAuthService.js      # GIS code flow (select_account) + /api/google-auth refresh + token fallback
 │   ├── components/
 │   │   ├── CloudPane/                # Dual-purpose explorer pane, connecting state, multi-select, actions & DnD
 │   │   ├── ConfirmModal/             # Delete confirmation dialog

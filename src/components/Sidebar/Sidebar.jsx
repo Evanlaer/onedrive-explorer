@@ -1,26 +1,132 @@
 import './Sidebar.css';
-import { FiCloud, FiCopy, FiMove, FiSettings } from 'react-icons/fi';
+import { FiCloud, FiHardDrive, FiCopy, FiMove, FiSettings, FiPlus } from 'react-icons/fi';
+
+function getInitials(label, fallback) {
+  if (!label) return fallback;
+  const parts = label.trim().split(/\s+/);
+  return parts.map((p) => p[0]).join('').slice(0, 2).toUpperCase() || fallback;
+}
+
+function ConnectionListSection({
+  title,
+  provider,
+  connections,
+  activeLeftId,
+  activeRightId,
+  onConnect,
+  onDisconnect,
+  onSelectInPane,
+}) {
+  const isGoogle = provider === 'google';
+
+  return (
+    <div className="sidebar-section">
+      <div className="sidebar-section-head">
+        <p className="sidebar-nav-label">{title}</p>
+        <span className="sidebar-count-pill">{connections.length}</span>
+      </div>
+
+      {connections.length === 0 ? (
+        <p className="sidebar-status-empty">No accounts added</p>
+      ) : (
+        <div className="sidebar-conn-list">
+          {connections.map((conn) => {
+            const initials = getInitials(
+              conn.displayName || conn.name,
+              isGoogle ? 'GD' : 'MS'
+            );
+            const inLeft = conn.id === activeLeftId;
+            const inRight = conn.id === activeRightId;
+
+            return (
+              <div
+                key={conn.id}
+                className={`sidebar-user ${conn.isConnected ? '' : 'sidebar-user--disconnected'}`}
+              >
+                <div
+                  className={`sidebar-user-avatar ${
+                    isGoogle ? 'sidebar-user-avatar--google' : ''
+                  }`}
+                  title={conn.isConnected ? 'Connected' : 'Not connected'}
+                >
+                  {conn.isConnected ? (
+                    initials
+                  ) : isGoogle ? (
+                    <FiHardDrive size={13} />
+                  ) : (
+                    <FiCloud size={13} />
+                  )}
+                  <span
+                    className={`sidebar-conn-status-dot ${
+                      conn.isConnected ? 'sidebar-conn-status-dot--on' : ''
+                    }`}
+                  />
+                </div>
+
+                <div className="sidebar-user-info">
+                  <div className="sidebar-conn-name-row">
+                    <button
+                      type="button"
+                      className="sidebar-user-name-btn"
+                      onClick={() => onSelectInPane?.(conn.id)}
+                      title={`Show ${conn.name} in explorer`}
+                    >
+                      {conn.name}
+                    </button>
+                    {inLeft && <span className="sidebar-pane-tag" title="Active in Left pane">L</span>}
+                    {inRight && <span className="sidebar-pane-tag" title="Active in Right pane">R</span>}
+                  </div>
+
+                  {conn.email && (
+                    <span className="sidebar-user-email" title={conn.email}>
+                      {conn.email}
+                    </span>
+                  )}
+
+                  {conn.isConnected ? (
+                    <button
+                      type="button"
+                      className="sidebar-user-logout"
+                      onClick={() => onDisconnect?.(conn.id)}
+                    >
+                      Sign Out
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="sidebar-user-connect"
+                      onClick={() => onConnect?.(conn.id)}
+                      disabled={conn.isConnecting}
+                    >
+                      {conn.isConnecting ? 'Connecting…' : 'Sign In'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export default function Sidebar({
-  userProfile,
-  googleProfile,
-  onLogoutOneDrive,
-  onLogoutGoogle,
+  connections = [],
+  activeLeftId = '',
+  activeRightId = '',
+  onConnectConnection,
+  onDisconnectConnection,
+  onQuickSelectConnection,
   transferMode = 'copy',
   onTransferModeChange,
   canTransfer = false,
-  autoConnectOneDrive = true,
-  autoConnectGoogle = true,
-  googleHasRefreshToken = false,
+  sameConnectionInBothPanes = false,
+  hasAutoConnect = true,
   onOpenSettings,
 }) {
-  const initials = userProfile?.displayName
-    ? userProfile.displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'MS';
-
-  const gInitials = googleProfile?.displayName
-    ? googleProfile.displayName.split(' ').map((n) => n[0]).join('').slice(0, 2).toUpperCase()
-    : 'GD';
+  const oneDrives = connections.filter((c) => c.provider === 'onedrive');
+  const googleDrives = connections.filter((c) => c.provider === 'google');
 
   return (
     <aside className="sidebar" aria-label="Drive navigation">
@@ -30,46 +136,40 @@ export default function Sidebar({
         <span className="sidebar-logo-text">Multi-Cloud Explorer</span>
       </div>
 
-      {/* OneDrive Section */}
-      <div className="sidebar-section">
-        <p className="sidebar-nav-label">OneDrive</p>
-        {userProfile ? (
-          <div className="sidebar-user">
-            <div className="sidebar-user-avatar">{initials}</div>
-            <div className="sidebar-user-info">
-              <span className="sidebar-user-name">{userProfile.displayName}</span>
-              <button
-                className="sidebar-user-logout"
-                onClick={onLogoutOneDrive}
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="sidebar-status-empty">Not connected</p>
-        )}
-      </div>
+      {/* Scrollable Connections List */}
+      <div className="sidebar-connections-scroll">
+        <ConnectionListSection
+          title="OneDrive"
+          provider="onedrive"
+          connections={oneDrives}
+          activeLeftId={activeLeftId}
+          activeRightId={activeRightId}
+          onConnect={onConnectConnection}
+          onDisconnect={onDisconnectConnection}
+          onSelectInPane={onQuickSelectConnection}
+        />
 
-      {/* Google Drive Section */}
-      <div className="sidebar-section">
-        <p className="sidebar-nav-label">Google Drive</p>
-        {googleProfile ? (
-          <div className="sidebar-user">
-            <div className="sidebar-user-avatar sidebar-user-avatar--google">{gInitials}</div>
-            <div className="sidebar-user-info">
-              <span className="sidebar-user-name">{googleProfile.displayName}</span>
-              <button
-                className="sidebar-user-logout"
-                onClick={onLogoutGoogle}
-              >
-                Sign Out
-              </button>
-            </div>
-          </div>
-        ) : (
-          <p className="sidebar-status-empty">Not connected</p>
-        )}
+        <ConnectionListSection
+          title="Google Drive"
+          provider="google"
+          connections={googleDrives}
+          activeLeftId={activeLeftId}
+          activeRightId={activeRightId}
+          onConnect={onConnectConnection}
+          onDisconnect={onDisconnectConnection}
+          onSelectInPane={onQuickSelectConnection}
+        />
+
+        <div className="sidebar-add-wrap">
+          <button
+            type="button"
+            className="sidebar-add-btn"
+            onClick={onOpenSettings}
+          >
+            <FiPlus size={13} />
+            <span>Add / Manage Accounts</span>
+          </button>
+        </div>
       </div>
 
       {/* Cross-Cloud Transfer Mode */}
@@ -107,8 +207,10 @@ export default function Sidebar({
         </div>
         <p className="sidebar-transfer-hint">
           {canTransfer
-            ? 'Drag files or folders across panes. Hold Shift while dropping to switch Copy / Move.'
-            : 'Sign in to both clouds to drag & drop files or folders between them.'}
+            ? 'Drag files or folders between panes. Hold Shift while dropping to switch Copy / Move.'
+            : sameConnectionInBothPanes
+            ? 'Select two different connections in the Left and Right panes to drag & drop between them.'
+            : 'Sign in to the selected connections in both panes to drag & drop files or folders.'}
         </p>
       </div>
 
@@ -121,7 +223,7 @@ export default function Sidebar({
         >
           <FiSettings size={15} className="sidebar-settings-icon" />
           <span className="sidebar-settings-label">Connection Settings</span>
-          {(autoConnectOneDrive || (autoConnectGoogle && googleHasRefreshToken)) && (
+          {hasAutoConnect && (
             <span
               className="sidebar-settings-dot"
               title="Auto-connect enabled"

@@ -15,9 +15,14 @@ import {
   FiLogIn,
   FiLogOut,
   FiRefreshCw,
+  FiPlus,
+  FiTrash2,
+  FiChevronDown,
+  FiChevronUp,
 } from 'react-icons/fi';
 import {
   ALLOWED_MS_AUTHORITIES,
+  createConnectionTemplate,
   getEnvDefaults,
 } from '../../utils/settingsStorage';
 
@@ -29,32 +34,30 @@ function maskId(value) {
 
 function SettingsDialogContent({
   settings,
-  isOneDriveAuth,
-  oneDriveConnecting,
-  oneDriveAuthNotice,
-  msProfile,
-  isGoogleAuth,
-  googleProfile,
-  googleHasRefreshToken,
+  connectionStates,
   googleAuthStatus,
-  googleConnecting,
-  googleAuthNotice,
   onSave,
   onReset,
   onClose,
-  onConnectOneDrive,
-  onDisconnectOneDrive,
-  onConnectGoogle,
-  onDisconnectGoogle,
+  onConnectConnection,
+  onDisconnectConnection,
 }) {
   const envDefaults = getEnvDefaults();
 
-  const [draft, setDraft] = useState(() => ({
-    onedrive: { ...settings.onedrive },
-    google: { ...settings.google },
-    general: { ...settings.general },
-  }));
-  const [showGoogleSecret, setShowGoogleSecret] = useState(false);
+  const [draftConnections, setDraftConnections] = useState(() =>
+    settings.connections.map((c) => ({ ...c }))
+  );
+  const [defaultTransferMode, setDefaultTransferMode] = useState(
+    settings.general.defaultTransferMode
+  );
+  const [expandedIds, setExpandedIds] = useState(() => {
+    // Expand the first two connections by default when there are only 1-2 connections
+    if (settings.connections.length <= 2) {
+      return new Set(settings.connections.map((c) => c.id));
+    }
+    return new Set();
+  });
+  const [visibleSecrets, setVisibleSecrets] = useState(() => new Set());
   const [confirmReset, setConfirmReset] = useState(false);
 
   useEffect(() => {
@@ -67,18 +70,56 @@ function SettingsDialogContent({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
-  const oneDriveNeedsReload =
-    draft.onedrive.autoConnect !== settings.onedrive.autoConnect ||
-    draft.onedrive.clientIdOverride.trim() !== settings.onedrive.clientIdOverride.trim() ||
-    draft.onedrive.authority !== settings.onedrive.authority;
+  const updateConn = (id, patch) => {
+    setDraftConnections((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, ...patch } : c))
+    );
+  };
 
-  const hasRefreshSecret =
-    googleAuthStatus.hasServerClientSecret ||
-    Boolean(draft.google.clientSecretOverride.trim());
+  const handleAddConnection = (provider) => {
+    const created = createConnectionTemplate(provider, draftConnections);
+    setDraftConnections((prev) => [...prev, created]);
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.add(created.id);
+      return next;
+    });
+  };
+
+  const handleRemoveConnection = (id) => {
+    if (draftConnections.length <= 1) return;
+    setDraftConnections((prev) => prev.filter((c) => c.id !== id));
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      next.delete(id);
+      return next;
+    });
+  };
+
+  const toggleExpanded = (id) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSecretVisibility = (id) => {
+    setVisibleSecrets((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    onSave(draft, { reloadForOneDrive: oneDriveNeedsReload });
+    onSave({
+      connections: draftConnections,
+      general: { defaultTransferMode },
+    });
   };
 
   const handleResetClick = () => {
@@ -88,19 +129,6 @@ function SettingsDialogContent({
     }
     onReset();
   };
-
-  const msAccountLabel =
-    msProfile?.displayName ||
-    msProfile?.mail ||
-    msProfile?.userPrincipalName ||
-    settings.onedrive.savedDisplayName ||
-    settings.onedrive.savedEmail;
-
-  const googleAccountLabel =
-    googleProfile?.displayName ||
-    googleProfile?.emailAddress ||
-    settings.google.savedDisplayName ||
-    settings.google.savedEmail;
 
   return (
     <div
@@ -125,7 +153,7 @@ function SettingsDialogContent({
               Connection Settings
             </h2>
             <p className="settings-subtitle">
-              Save your OneDrive &amp; Google Drive parameters to reconnect automatically on startup.
+              Add and configure multiple OneDrive &amp; Google Drive accounts for automatic reconnection.
             </p>
           </div>
           <button
@@ -140,331 +168,340 @@ function SettingsDialogContent({
 
         {/* Scrollable Body */}
         <div className="settings-body">
-          {/* ── OneDrive Card ── */}
-          <section className="settings-panel">
-            <div className="settings-panel-header">
-              <div className="settings-panel-title-group">
-                <span className="settings-provider-dot settings-provider-dot--ms">
-                  <FiCloud size={14} />
-                </span>
-                <div>
-                  <h3 className="settings-panel-title">OneDrive (Microsoft)</h3>
-                  <div className="settings-status-row">
-                    {isOneDriveAuth ? (
-                      <span className="settings-badge settings-badge--connected">
-                        <FiCheckCircle size={12} />
-                        Connected{msAccountLabel ? ` · ${msAccountLabel}` : ''}
-                      </span>
-                    ) : oneDriveConnecting ? (
-                      <span className="settings-badge settings-badge--saved">
-                        <FiRefreshCw size={12} className="settings-spin" />
-                        Connecting…
-                      </span>
-                    ) : settings.onedrive.savedEmail && settings.onedrive.autoConnect ? (
-                      <span className="settings-badge settings-badge--saved">
-                        Saved · {settings.onedrive.savedEmail}
-                      </span>
-                    ) : (
-                      <span className="settings-badge settings-badge--idle">Not connected</span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {isOneDriveAuth ? (
-                <button
-                  type="button"
-                  className="settings-action-btn settings-action-btn--danger"
-                  onClick={onDisconnectOneDrive}
-                >
-                  <FiLogOut size={13} />
-                  <span>Disconnect</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="settings-action-btn settings-action-btn--primary"
-                  onClick={onConnectOneDrive}
-                  disabled={oneDriveConnecting}
-                >
-                  <FiLogIn size={13} />
-                  <span>{oneDriveConnecting ? 'Connecting…' : 'Connect'}</span>
-                </button>
-              )}
+          {/* Add Connection Toolbar */}
+          <div className="settings-toolbar">
+            <div className="settings-toolbar-label">
+              <span>Cloud Accounts</span>
+              <span className="settings-toolbar-count">{draftConnections.length}</span>
             </div>
-
-            {oneDriveAuthNotice && (
-              <div className="settings-banner settings-banner--warn">
-                <FiAlertCircle size={14} className="settings-banner-icon" />
-                <span>{oneDriveAuthNotice}</span>
-              </div>
-            )}
-
-            <label className="settings-toggle-row">
-              <div className="settings-toggle-copy">
-                <span className="settings-toggle-label">Auto-connect on startup</span>
-                <span className="settings-toggle-desc">
-                  Store Microsoft session in persistent browser storage so OneDrive connects automatically next time you launch.
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                className="settings-checkbox"
-                checked={draft.onedrive.autoConnect}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    onedrive: { ...prev.onedrive, autoConnect: e.target.checked },
-                  }))
-                }
-              />
-            </label>
-
-            <div className="settings-fields-grid">
-              <div className="settings-field">
-                <label htmlFor="ms-client-id" className="settings-label">
-                  Azure Client ID <span className="settings-optional">(optional override)</span>
-                </label>
-                <input
-                  id="ms-client-id"
-                  type="text"
-                  className="settings-input"
-                  value={draft.onedrive.clientIdOverride}
-                  onChange={(e) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      onedrive: { ...prev.onedrive, clientIdOverride: e.target.value },
-                    }))
-                  }
-                  placeholder={
-                    envDefaults.oneDriveClientId
-                      ? `Using .env default (${maskId(envDefaults.oneDriveClientId)})`
-                      : 'Enter Azure Application (Client) ID'
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className="settings-field">
-                <label htmlFor="ms-authority" className="settings-label">
-                  Microsoft Account Type
-                </label>
-                <select
-                  id="ms-authority"
-                  className="settings-select"
-                  value={draft.onedrive.authority}
-                  onChange={(e) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      onedrive: { ...prev.onedrive, authority: e.target.value },
-                    }))
-                  }
-                >
-                  {ALLOWED_MS_AUTHORITIES.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            {oneDriveNeedsReload && (
-              <p className="settings-inline-note">
-                Saving changes to OneDrive settings will reload the page to apply the updated Microsoft auth configuration.
-              </p>
-            )}
-          </section>
-
-          {/* ── Google Drive Card ── */}
-          <section className="settings-panel">
-            <div className="settings-panel-header">
-              <div className="settings-panel-title-group">
-                <span className="settings-provider-dot settings-provider-dot--google">
-                  <FiHardDrive size={14} />
-                </span>
-                <div>
-                  <h3 className="settings-panel-title">Google Drive</h3>
-                  <div className="settings-status-row">
-                    {isGoogleAuth ? (
-                      <span className="settings-badge settings-badge--connected">
-                        <FiCheckCircle size={12} />
-                        Connected{googleAccountLabel ? ` · ${googleAccountLabel}` : ''}
-                      </span>
-                    ) : googleConnecting ? (
-                      <span className="settings-badge settings-badge--saved">
-                        <FiRefreshCw size={12} className="settings-spin" />
-                        Reconnecting…
-                      </span>
-                    ) : (
-                      <span className="settings-badge settings-badge--idle">Not connected</span>
-                    )}
-
-                    {googleHasRefreshToken && (
-                      <span className="settings-badge settings-badge--refresh">
-                        Refresh Token Saved
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              {isGoogleAuth ? (
-                <button
-                  type="button"
-                  className="settings-action-btn settings-action-btn--danger"
-                  onClick={onDisconnectGoogle}
-                >
-                  <FiLogOut size={13} />
-                  <span>Disconnect</span>
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  className="settings-action-btn settings-action-btn--primary"
-                  onClick={() =>
-                    onConnectGoogle({
-                      autoConnect: draft.google.autoConnect,
-                      clientIdOverride: draft.google.clientIdOverride.trim(),
-                      clientSecretOverride: draft.google.clientSecretOverride.trim(),
-                    })
-                  }
-                  disabled={googleConnecting}
-                >
-                  <FiLogIn size={13} />
-                  <span>{googleConnecting ? 'Connecting…' : 'Connect'}</span>
-                </button>
-              )}
-            </div>
-
-            <label className="settings-toggle-row">
-              <div className="settings-toggle-copy">
-                <span className="settings-toggle-label">Auto-connect on startup</span>
-                <span className="settings-toggle-desc">
-                  Store a Google OAuth refresh token via <code>/api/google-auth</code> so Google Drive silently reconnects without popups.
-                </span>
-              </div>
-              <input
-                type="checkbox"
-                className="settings-checkbox"
-                checked={draft.google.autoConnect}
-                onChange={(e) =>
-                  setDraft((prev) => ({
-                    ...prev,
-                    google: { ...prev.google, autoConnect: e.target.checked },
-                  }))
-                }
-              />
-            </label>
-
-            {googleAuthNotice && (
-              <div className="settings-banner settings-banner--warn">
-                <FiAlertCircle size={14} className="settings-banner-icon" />
-                <span>{googleAuthNotice}</span>
-              </div>
-            )}
-
-            {/* Backend refresh capability banner */}
-            {draft.google.autoConnect && (
-              <div
-                className={`settings-banner ${
-                  hasRefreshSecret ? 'settings-banner--ok' : 'settings-banner--warn'
-                }`}
+            <div className="settings-add-actions">
+              <button
+                type="button"
+                className="settings-add-btn settings-add-btn--ms"
+                onClick={() => handleAddConnection('onedrive')}
               >
-                {hasRefreshSecret ? (
-                  <>
-                    <FiCheckCircle size={14} className="settings-banner-icon" />
-                    <span>
-                      {googleAuthStatus.hasServerClientSecret
-                        ? 'Silent refresh ready: GOOGLE_CLIENT_SECRET is configured on the server.'
-                        : 'Silent refresh ready using your saved Client Secret override.'}
-                      {isGoogleAuth && !googleHasRefreshToken
-                        ? ' Disconnect and reconnect Google Drive once to save a long-lived refresh token.'
-                        : ''}
-                    </span>
-                  </>
-                ) : (
-                  <>
-                    <FiAlertCircle size={14} className="settings-banner-icon" />
-                    <span>
-                      Add <code>GOOGLE_CLIENT_SECRET</code> to your <code>.env</code> / Vercel Environment Variables (recommended) or enter it below to enable silent reconnection after 1 hour.
-                    </span>
-                  </>
-                )}
-              </div>
-            )}
-
-            <div className="settings-fields-grid">
-              <div className="settings-field">
-                <label htmlFor="google-client-id" className="settings-label">
-                  Google Client ID <span className="settings-optional">(optional override)</span>
-                </label>
-                <input
-                  id="google-client-id"
-                  type="text"
-                  className="settings-input"
-                  value={draft.google.clientIdOverride}
-                  onChange={(e) =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      google: { ...prev.google, clientIdOverride: e.target.value },
-                    }))
-                  }
-                  placeholder={
-                    envDefaults.googleClientId
-                      ? `Using .env default (${maskId(envDefaults.googleClientId)})`
-                      : 'Enter Google OAuth 2.0 Client ID'
-                  }
-                  autoComplete="off"
-                  spellCheck={false}
-                />
-              </div>
-
-              <div className="settings-field">
-                <label htmlFor="google-client-secret" className="settings-label">
-                  Google Client Secret{' '}
-                  <span className="settings-optional">
-                    ({googleAuthStatus.hasServerClientSecret ? 'server configured' : 'optional override'})
-                  </span>
-                </label>
-                <div className="settings-secret-wrap">
-                  <input
-                    id="google-client-secret"
-                    type={showGoogleSecret ? 'text' : 'password'}
-                    className="settings-input settings-input--secret"
-                    value={draft.google.clientSecretOverride}
-                    onChange={(e) =>
-                      setDraft((prev) => ({
-                        ...prev,
-                        google: { ...prev.google, clientSecretOverride: e.target.value },
-                      }))
-                    }
-                    placeholder={
-                      googleAuthStatus.hasServerClientSecret
-                        ? 'Managed securely via server GOOGLE_CLIENT_SECRET'
-                        : 'GOCSPX-… (or set GOOGLE_CLIENT_SECRET in .env)'
-                    }
-                    autoComplete="off"
-                    spellCheck={false}
-                  />
-                  <button
-                    type="button"
-                    className="settings-secret-toggle"
-                    onClick={() => setShowGoogleSecret((s) => !s)}
-                    aria-label={showGoogleSecret ? 'Hide secret' : 'Show secret'}
-                  >
-                    {showGoogleSecret ? <FiEyeOff size={14} /> : <FiEye size={14} />}
-                  </button>
-                </div>
-                <span className="settings-field-hint">
-                  Tip: Setting <code>GOOGLE_CLIENT_SECRET</code> in <code>.env</code> or Vercel keeps the secret out of browser storage.
-                </span>
-              </div>
+                <FiPlus size={13} />
+                <span>Add OneDrive</span>
+              </button>
+              <button
+                type="button"
+                className="settings-add-btn settings-add-btn--google"
+                onClick={() => handleAddConnection('google')}
+              >
+                <FiPlus size={13} />
+                <span>Add Google Drive</span>
+              </button>
             </div>
-          </section>
+          </div>
 
-          {/* ── General Preferences ── */}
+          {/* Connection Cards */}
+          {draftConnections.map((conn) => {
+            const isGoogle = conn.provider === 'google';
+            const runtime = connectionStates[conn.id] || {};
+            const isConnected = Boolean(runtime.isConnected);
+            const isConnecting = Boolean(runtime.isConnecting);
+            const hasRefreshToken = Boolean(runtime.hasRefreshToken);
+            const authNotice = runtime.authNotice || null;
+            const accountLabel =
+              runtime.displayName ||
+              runtime.email ||
+              conn.savedDisplayName ||
+              conn.savedEmail;
+            const isExpanded = expandedIds.has(conn.id);
+            const showSecret = visibleSecrets.has(conn.id);
+            const hasRefreshSecret =
+              googleAuthStatus.hasServerClientSecret ||
+              Boolean((conn.clientSecretOverride || '').trim());
+
+            return (
+              <section key={conn.id} className="settings-panel">
+                <div className="settings-panel-header">
+                  <div className="settings-panel-title-group">
+                    <span
+                      className={`settings-provider-dot ${
+                        isGoogle
+                          ? 'settings-provider-dot--google'
+                          : 'settings-provider-dot--ms'
+                      }`}
+                    >
+                      {isGoogle ? <FiHardDrive size={14} /> : <FiCloud size={14} />}
+                    </span>
+
+                    <div className="settings-conn-heading">
+                      <input
+                        type="text"
+                        className="settings-conn-name-input"
+                        value={conn.name}
+                        onChange={(e) => updateConn(conn.id, { name: e.target.value })}
+                        placeholder={isGoogle ? 'Google Drive name' : 'OneDrive name'}
+                        aria-label="Connection name"
+                        spellCheck={false}
+                      />
+
+                      <div className="settings-status-row">
+                        <span className="settings-provider-tag">
+                          {isGoogle ? 'Google Drive' : 'OneDrive'}
+                        </span>
+                        {isConnected ? (
+                          <span className="settings-badge settings-badge--connected">
+                            <FiCheckCircle size={11} />
+                            Connected{accountLabel ? ` · ${accountLabel}` : ''}
+                          </span>
+                        ) : isConnecting ? (
+                          <span className="settings-badge settings-badge--saved">
+                            <FiRefreshCw size={11} className="settings-spin" />
+                            Connecting…
+                          </span>
+                        ) : conn.savedEmail && conn.autoConnect ? (
+                          <span className="settings-badge settings-badge--saved">
+                            Saved · {conn.savedEmail}
+                          </span>
+                        ) : (
+                          <span className="settings-badge settings-badge--idle">
+                            Not connected
+                          </span>
+                        )}
+
+                        {isGoogle && hasRefreshToken && (
+                          <span className="settings-badge settings-badge--refresh">
+                            Refresh Token Saved
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="settings-card-controls">
+                    {isConnected ? (
+                      <button
+                        type="button"
+                        className="settings-action-btn settings-action-btn--danger"
+                        onClick={() => onDisconnectConnection(conn.id)}
+                      >
+                        <FiLogOut size={12} />
+                        <span>Disconnect</span>
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="settings-action-btn settings-action-btn--primary"
+                        onClick={() =>
+                          onConnectConnection(conn, {
+                            draftConnections,
+                            defaultTransferMode,
+                          })
+                        }
+                        disabled={isConnecting}
+                      >
+                        <FiLogIn size={12} />
+                        <span>{isConnecting ? 'Connecting…' : 'Connect'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      className="settings-icon-btn"
+                      onClick={() => toggleExpanded(conn.id)}
+                      title={isExpanded ? 'Hide parameters' : 'Edit parameters'}
+                      aria-label={isExpanded ? 'Hide parameters' : 'Edit parameters'}
+                    >
+                      {isExpanded ? <FiChevronUp size={15} /> : <FiChevronDown size={15} />}
+                    </button>
+
+                    <button
+                      type="button"
+                      className="settings-icon-btn settings-icon-btn--delete"
+                      onClick={() => handleRemoveConnection(conn.id)}
+                      disabled={draftConnections.length <= 1}
+                      title={
+                        draftConnections.length <= 1
+                          ? 'Keep at least one connection'
+                          : `Remove ${conn.name}`
+                      }
+                      aria-label={`Remove ${conn.name}`}
+                    >
+                      <FiTrash2 size={14} />
+                    </button>
+                  </div>
+                </div>
+
+                {authNotice && (
+                  <div className="settings-banner settings-banner--warn">
+                    <FiAlertCircle size={14} className="settings-banner-icon" />
+                    <span>{authNotice}</span>
+                  </div>
+                )}
+
+                {isExpanded && (
+                  <div className="settings-conn-details">
+                    <label className="settings-toggle-row">
+                      <div className="settings-toggle-copy">
+                        <span className="settings-toggle-label">Auto-connect on startup</span>
+                        <span className="settings-toggle-desc">
+                          {isGoogle
+                            ? 'Save an OAuth refresh token via /api/google-auth to reconnect automatically with zero popups.'
+                            : 'Persist Microsoft session in browser storage so this OneDrive account reconnects automatically.'}
+                        </span>
+                      </div>
+                      <input
+                        type="checkbox"
+                        className="settings-checkbox"
+                        checked={conn.autoConnect}
+                        onChange={(e) =>
+                          updateConn(conn.id, { autoConnect: e.target.checked })
+                        }
+                      />
+                    </label>
+
+                    {isGoogle && conn.autoConnect && (
+                      <div
+                        className={`settings-banner ${
+                          hasRefreshSecret ? 'settings-banner--ok' : 'settings-banner--warn'
+                        }`}
+                      >
+                        {hasRefreshSecret ? (
+                          <>
+                            <FiCheckCircle size={14} className="settings-banner-icon" />
+                            <span>
+                              {googleAuthStatus.hasServerClientSecret &&
+                              !(conn.clientSecretOverride || '').trim()
+                                ? 'Silent refresh ready: GOOGLE_CLIENT_SECRET is configured on the server.'
+                                : 'Silent refresh ready using this connection’s Client Secret override.'}
+                              {isConnected && !hasRefreshToken
+                                ? ' Disconnect and reconnect once to save a refresh token.'
+                                : ''}
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <FiAlertCircle size={14} className="settings-banner-icon" />
+                            <span>
+                              Add <code>GOOGLE_CLIENT_SECRET</code> to <code>.env</code> / Vercel or enter it below to enable silent reconnection after 1 hour.
+                            </span>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {isGoogle ? (
+                      <div className="settings-fields-grid">
+                        <div className="settings-field">
+                          <label htmlFor={`gd-id-${conn.id}`} className="settings-label">
+                            Google Client ID{' '}
+                            <span className="settings-optional">(optional override)</span>
+                          </label>
+                          <input
+                            id={`gd-id-${conn.id}`}
+                            type="text"
+                            className="settings-input"
+                            value={conn.clientIdOverride || ''}
+                            onChange={(e) =>
+                              updateConn(conn.id, { clientIdOverride: e.target.value })
+                            }
+                            placeholder={
+                              envDefaults.googleClientId
+                                ? `Using .env default (${maskId(envDefaults.googleClientId)})`
+                                : 'Enter Google OAuth 2.0 Client ID'
+                            }
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        </div>
+
+                        <div className="settings-field">
+                          <label htmlFor={`gd-sec-${conn.id}`} className="settings-label">
+                            Google Client Secret{' '}
+                            <span className="settings-optional">
+                              (
+                              {googleAuthStatus.hasServerClientSecret
+                                ? 'server configured'
+                                : 'optional override'}
+                              )
+                            </span>
+                          </label>
+                          <div className="settings-secret-wrap">
+                            <input
+                              id={`gd-sec-${conn.id}`}
+                              type={showSecret ? 'text' : 'password'}
+                              className="settings-input settings-input--secret"
+                              value={conn.clientSecretOverride || ''}
+                              onChange={(e) =>
+                                updateConn(conn.id, {
+                                  clientSecretOverride: e.target.value,
+                                })
+                              }
+                              placeholder={
+                                googleAuthStatus.hasServerClientSecret
+                                  ? 'Managed via server GOOGLE_CLIENT_SECRET'
+                                  : 'GOCSPX-… (or set GOOGLE_CLIENT_SECRET in .env)'
+                              }
+                              autoComplete="off"
+                              spellCheck={false}
+                            />
+                            <button
+                              type="button"
+                              className="settings-secret-toggle"
+                              onClick={() => toggleSecretVisibility(conn.id)}
+                              aria-label={showSecret ? 'Hide secret' : 'Show secret'}
+                            >
+                              {showSecret ? <FiEyeOff size={14} /> : <FiEye size={14} />}
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="settings-fields-grid">
+                        <div className="settings-field">
+                          <label htmlFor={`ms-id-${conn.id}`} className="settings-label">
+                            Azure Client ID{' '}
+                            <span className="settings-optional">(optional override)</span>
+                          </label>
+                          <input
+                            id={`ms-id-${conn.id}`}
+                            type="text"
+                            className="settings-input"
+                            value={conn.clientIdOverride || ''}
+                            onChange={(e) =>
+                              updateConn(conn.id, { clientIdOverride: e.target.value })
+                            }
+                            placeholder={
+                              envDefaults.oneDriveClientId
+                                ? `Using .env default (${maskId(envDefaults.oneDriveClientId)})`
+                                : 'Enter Azure Application (Client) ID'
+                            }
+                            autoComplete="off"
+                            spellCheck={false}
+                          />
+                        </div>
+
+                        <div className="settings-field">
+                          <label htmlFor={`ms-auth-${conn.id}`} className="settings-label">
+                            Microsoft Account Type
+                          </label>
+                          <select
+                            id={`ms-auth-${conn.id}`}
+                            className="settings-select"
+                            value={conn.authority || 'consumers'}
+                            onChange={(e) =>
+                              updateConn(conn.id, { authority: e.target.value })
+                            }
+                          >
+                            {ALLOWED_MS_AUTHORITIES.map((opt) => (
+                              <option key={opt.value} value={opt.value}>
+                                {opt.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </section>
+            );
+          })}
+
+          {/* General Preferences */}
           <section className="settings-panel">
             <div className="settings-panel-header settings-panel-header--compact">
               <h3 className="settings-panel-title">General Preferences</h3>
@@ -477,22 +514,19 @@ function SettingsDialogContent({
                   Remembered across restarts (hold Shift on drop to switch temporarily).
                 </span>
               </div>
-              <div className="settings-mode-group" role="radiogroup" aria-label="Default transfer mode">
+              <div
+                className="settings-mode-group"
+                role="radiogroup"
+                aria-label="Default transfer mode"
+              >
                 <button
                   type="button"
                   role="radio"
-                  aria-checked={draft.general.defaultTransferMode === 'copy'}
+                  aria-checked={defaultTransferMode === 'copy'}
                   className={`settings-mode-btn ${
-                    draft.general.defaultTransferMode === 'copy'
-                      ? 'settings-mode-btn--copy'
-                      : ''
+                    defaultTransferMode === 'copy' ? 'settings-mode-btn--copy' : ''
                   }`}
-                  onClick={() =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      general: { ...prev.general, defaultTransferMode: 'copy' },
-                    }))
-                  }
+                  onClick={() => setDefaultTransferMode('copy')}
                 >
                   <FiCopy size={13} />
                   <span>Copy</span>
@@ -500,18 +534,11 @@ function SettingsDialogContent({
                 <button
                   type="button"
                   role="radio"
-                  aria-checked={draft.general.defaultTransferMode === 'move'}
+                  aria-checked={defaultTransferMode === 'move'}
                   className={`settings-mode-btn ${
-                    draft.general.defaultTransferMode === 'move'
-                      ? 'settings-mode-btn--move'
-                      : ''
+                    defaultTransferMode === 'move' ? 'settings-mode-btn--move' : ''
                   }`}
-                  onClick={() =>
-                    setDraft((prev) => ({
-                      ...prev,
-                      general: { ...prev.general, defaultTransferMode: 'move' },
-                    }))
-                  }
+                  onClick={() => setDefaultTransferMode('move')}
                 >
                   <FiMove size={13} />
                   <span>Move</span>
@@ -541,7 +568,7 @@ function SettingsDialogContent({
               Cancel
             </button>
             <button type="submit" className="settings-btn settings-btn--primary">
-              {oneDriveNeedsReload ? 'Save & Reload' : 'Save Settings'}
+              Save Settings
             </button>
           </div>
         </div>

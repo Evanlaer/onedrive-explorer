@@ -1,7 +1,9 @@
 import { loginRequest } from './msalConfig';
+import { getMsalInstanceForConnection, consumeRedirectAccount } from './msalRegistry';
+import { DEFAULT_ONEDRIVE_ID } from '../utils/settingsStorage';
 
-let activeLoginPromise = null;
-let activeTokenPromise = null;
+const activeLoginPromises = new Map();
+const activeTokenPromises = new Map();
 
 const POPUP_BLOCKED_CODES = new Set([
   'popup_window_error',
@@ -30,16 +32,86 @@ function clearStaleMsalInteraction() {
 }
 
 /**
- * Initiates Microsoft login.
- * Prefers loginPopup (keeps the app and Google Drive session open, works in embedded
- * browser views) and falls back automatically to loginRedirect if popups are blocked.
+ * Matches a cached MSAL account to a specific saved OneDrive connection.
  */
-export async function login(msalInstance, { loginHint } = {}) {
-  if (activeLoginPromise) {
-    return activeLoginPromise;
+export function findMsalAccount(msalInstance, connection, claimedAccountIds = new Set()) {
+  const accounts = msalInstance.getAllAccounts();
+  if (accounts.length === 0) return null;
+
+  if (connection?.savedAccountId) {
+    const exact = accounts.find((a) => a.homeAccountId === connection.savedAccountId);
+    if (exact) return exact;
   }
 
-  const request = loginHint ? { ...loginRequest, loginHint } : { ...loginRequest };
+  if (connection?.savedEmail) {
+    const emailLower = connection.savedEmail.toLowerCase();
+    const byEmail = accounts.find(
+      (a) => (a.username || '').toLowerCase() === emailLower
+    );
+    if (byEmail) return byEmail;
+  }
+
+  // Legacy migration fallback: only auto-claim an unclaimed account for the original default OneDrive
+  if (connection?.id === DEFAULT_ONEDRIVE_ID) {
+    const unclaimed = accounts.find((a) => !claimedAccountIds.has(a.homeAccountId));
+    if (unclaimed) return unclaimed;
+  }
+
+  return null;
+}
+
+/**
+ * Attempts to restore or silently connect a saved OneDrive connection on startup.
+ */
+export async function resolveOneDriveSession(connection, claimedAccountIds = new Set()) {
+  const msalInstance = await getMsalInstanceForConnection(connection);
+  const redirectAcc = consumeRedirectAccount(connection);
+  if (redirectAcc && !claimedAccountIds.has(redirectAcc.homeAccountId)) {
+    return { msalInstance, account: redirectAcc };
+  }
+
+  const cached = findMsalAccount(msalInstance, connection, claimedAccountIds);
+  if (cached) {
+    return { msalInstance, account: cached };
+  }
+
+  if (connection?.autoConnect && connection?.savedEmail) {
+    try {
+      const ssoResult = await msalInstance.ssoSilent({
+        ...loginRequest,
+        loginHint: connection.savedEmail,
+      });
+      if (ssoResult?.account) {
+        return { msalInstance, account: ssoResult.account };
+      }
+    } catch (ssoErr) {
+      if (import.meta.env.DEV) {
+        console.info(
+          `[MSAL] Silent auto-connect skipped for ${connection.name}:`,
+          ssoErr?.errorCode || ssoErr?.message
+        );
+      }
+    }
+  }
+
+  return { msalInstance, account: null };
+}
+
+/**
+ * Initiates Microsoft login for a specific OneDrive connection.
+ * Uses prompt: 'select_account' when connecting a new/unlinked connection so users can
+ * easily sign into multiple different Microsoft accounts.
+ */
+export async function loginOneDriveConnection(connection) {
+  const connId = connection?.id || 'default';
+  if (activeLoginPromises.has(connId)) {
+    return activeLoginPromises.get(connId);
+  }
+
+  const msalInstance = await getMsalInstanceForConnection(connection);
+  const request = connection?.savedEmail
+    ? { ...loginRequest, loginHint: connection.savedEmail }
+    : { ...loginRequest, prompt: 'select_account' };
 
   const attemptPopup = async (allowRetry = true) => {
     try {
@@ -47,47 +119,51 @@ export async function login(msalInstance, { loginHint } = {}) {
       if (result?.account) {
         msalInstance.setActiveAccount(result.account);
       }
-      return result;
+      return { msalInstance, account: result?.account || null };
     } catch (err) {
       const code = err?.errorCode || '';
 
-      // Clear stale interaction_in_progress lock once and retry
       if (code === 'interaction_in_progress' && allowRetry) {
         clearStaleMsalInteraction();
         return attemptPopup(false);
       }
 
-      // User simply closed the Microsoft popup
       if (code === 'user_cancelled') {
         const cancelled = new Error('Microsoft sign-in window was closed.');
         cancelled.code = 'USER_CANCELLED';
         throw cancelled;
       }
 
-      // Fall back to full-page redirect if the browser blocked the popup
       if (POPUP_BLOCKED_CODES.has(code)) {
         clearStaleMsalInteraction();
         await msalInstance.loginRedirect(request);
-        return null;
+        return { msalInstance, account: null };
       }
 
       throw err;
     }
   };
 
-  activeLoginPromise = attemptPopup().finally(() => {
-    activeLoginPromise = null;
+  const promise = attemptPopup().finally(() => {
+    activeLoginPromises.delete(connId);
   });
 
-  return activeLoginPromise;
+  activeLoginPromises.set(connId, promise);
+  return promise;
 }
 
 /**
- * Logs out the current Microsoft user without wiping the Google Drive session.
- * Falls back to redirect logout if popups are blocked.
+ * Signs out a specific Microsoft account without disturbing other OneDrive or Google connections.
  */
-export async function logout(msalInstance) {
-  const account = msalInstance.getActiveAccount() || msalInstance.getAllAccounts()[0];
+export async function logoutOneDriveConnection(connection, accountId) {
+  const msalInstance = await getMsalInstanceForConnection(connection);
+  const accounts = msalInstance.getAllAccounts();
+  const account =
+    accounts.find((a) => a.homeAccountId === (accountId || connection?.savedAccountId)) ||
+    findMsalAccount(msalInstance, connection);
+
+  if (!account) return;
+
   try {
     await msalInstance.logoutPopup({
       account,
@@ -106,26 +182,31 @@ export async function logout(msalInstance) {
 }
 
 /**
- * Acquires an access token silently (no user interaction needed after first login).
- * Deduplicates concurrent calls so multiple hooks don't trigger overlapping prompts.
+ * Acquires an access token silently for a specific Microsoft account (deduplicated per account).
+ * Accepts either `{ msalInstance, accountId }` or a raw `msalInstance`.
  */
-export async function getAccessToken(msalInstance) {
-  if (activeTokenPromise) {
-    return activeTokenPromise;
+export async function getAccessToken(oneDriveCtx) {
+  const msalInstance = oneDriveCtx?.msalInstance || oneDriveCtx;
+  const accountId = oneDriveCtx?.accountId || '';
+
+  if (!msalInstance || typeof msalInstance.getAllAccounts !== 'function') {
+    throw new Error('OneDrive authentication is not initialized.');
   }
 
-  activeTokenPromise = (async () => {
-    let account = msalInstance.getActiveAccount();
+  const dedupeKey = accountId || 'active';
+  if (activeTokenPromises.has(dedupeKey)) {
+    return activeTokenPromises.get(dedupeKey);
+  }
+
+  const promise = (async () => {
+    const accounts = msalInstance.getAllAccounts();
+    let account = accountId
+      ? accounts.find((a) => a.homeAccountId === accountId)
+      : msalInstance.getActiveAccount() || accounts[0];
 
     if (!account) {
-      const accounts = msalInstance.getAllAccounts();
-      if (accounts.length > 0) {
-        msalInstance.setActiveAccount(accounts[0]);
-        account = accounts[0];
-      }
+      throw new Error('OneDrive account is not signed in. Please connect it.');
     }
-
-    if (!account) throw new Error('No active account. Please log in.');
 
     try {
       const response = await msalInstance.acquireTokenSilent({
@@ -148,11 +229,10 @@ export async function getAccessToken(msalInstance) {
         throw popupErr;
       }
     }
-  })();
+  })().finally(() => {
+    activeTokenPromises.delete(dedupeKey);
+  });
 
-  try {
-    return await activeTokenPromise;
-  } finally {
-    activeTokenPromise = null;
-  }
+  activeTokenPromises.set(dedupeKey, promise);
+  return promise;
 }

@@ -23,7 +23,8 @@ export default function FileList({
   items,
   loading,
   error,
-  cloudType,
+  paneId,
+  connectionId,
   canTransfer,
   dragState,
   selectedIds,
@@ -67,7 +68,7 @@ export default function FileList({
   const hasAnySelection = selectedCount > 0;
 
   const draggedIdSet =
-    dragState && dragState.sourceCloud === cloudType
+    dragState && dragState.sourcePaneId === paneId
       ? new Set((dragState.items || []).map((it) => it.id))
       : null;
 
@@ -94,7 +95,8 @@ export default function FileList({
           <FileItem
             key={item.id}
             item={item}
-            cloudType={cloudType}
+            paneId={paneId}
+            connectionId={connectionId}
             canTransfer={canTransfer}
             dragState={dragState}
             isSelected={selectedIds ? selectedIds.has(item.id) : false}

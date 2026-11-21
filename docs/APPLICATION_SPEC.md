@@ -6,7 +6,7 @@
 
 **Application Name:** Multi-Cloud Explorer (formerly OneDrive Explorer)  
 **Vision:** A premium, dual-pane web application that allows users to browse, organize, and transfer files and folders seamlessly between OneDrive and Google Drive side-by-side.  
-**Phase:** v1.4 — Connection Settings & Persistent Auto-Connect (Adds Connection Settings modal for OneDrive & Google Drive parameters, persistent MSAL `localStorage` + `ssoSilent` reconnection, and `/api/google-auth` OAuth refresh-token auto-connect for Google Drive).
+**Phase:** v1.5 — Multi-Account Connections & Flexible Dual-Pane Pick Lists (Add, name, and persist multiple OneDrive and Google Drive accounts in Connection Settings; select any account in either pane via dropdown pick lists; drag & drop Copy/Move across any two accounts including OneDrive ↔ OneDrive and Google Drive ↔ Google Drive).
 
 ---
 
@@ -42,11 +42,12 @@
 | FR-20 | As a user, I want to **delete one or multiple selected items** in either OneDrive or Google Drive via a **Delete** button (or `Del` key) with a confirmation dialog sending them to Recycle Bin / Trash. | Must-Have | Implemented |
 | FR-21 | As a user, I want to **rename a selected file or folder** in either OneDrive or Google Drive via a **Rename** button (or `F2` key) with extension-preserving selection and inline validation. | Must-Have | Implemented |
 | FR-22 | As a user, I want a **Connection Settings modal** to store OneDrive and Google Drive connection parameters (Auto-Connect toggles, optional Client ID / Authority / Secret overrides, and default Copy/Move mode) so both clouds reconnect automatically every time the app starts. | Must-Have | Implemented |
+| FR-23 | As a user, I want to **add, name, save, and manage multiple OneDrive and Google Drive accounts** in Connection Settings and **select which account to display in each pane via a pick list** on the main page (supporting OneDrive ↔ Google Drive, OneDrive ↔ OneDrive, and Google Drive ↔ Google Drive transfers). | Must-Have | Implemented |
 
 ### Happy Path
-1. **One-Time Connection Setup**: User signs into OneDrive (`Files.ReadWrite`) and Google Drive (`drive`) once (from the panes or via **Connection Settings** in the sidebar). With **Auto-connect on startup** enabled, future launches reconnect both clouds automatically without repeated sign-in prompts.
-2. User navigates folders independently in either pane.
-3. **Multi-Select & Batch Transfer**: User checks several files/folders (or uses `Ctrl+Click` / `Shift+Click` / Select All) and drags any selected item to the opposite pane (or onto a specific subfolder):
+1. **Multi-Account Setup & Auto-Connect**: User adds and names one or more OneDrive and Google Drive accounts in **Connection Settings** (or connects the default accounts directly from the panes). With **Auto-connect on startup** enabled, future launches reconnect every saved account automatically without repeated sign-in prompts.
+2. **Account Selection & Independent Browsing**: User picks any saved OneDrive or Google Drive account in the Left and Right pane dropdown pick lists and navigates folders independently.
+3. **Multi-Select & Batch Transfer**: User checks several files/folders (or uses `Ctrl+Click` / `Shift+Click` / Select All) and drags any selected item to the opposite pane (OneDrive ↔ Google Drive, OneDrive ↔ OneDrive, or Google Drive ↔ Google Drive — into the open folder or onto a specific subfolder):
    - A custom `N items` drag badge and live drop banner preview `Copy N items` or `Move N items` (`Hold Shift` switches Copy ↔ Move).
    - The floating **Transfers** toast processes items with controlled concurrency (2 active at a time, remaining queued) with live download/upload percentages, then refreshes affected panes automatically.
 4. **Delete**: With 1+ items selected in either pane, user clicks **Delete** (or presses `Del`) → confirms in the modal → items move safely to OneDrive Recycle Bin or Google Drive Trash and the pane refreshes.

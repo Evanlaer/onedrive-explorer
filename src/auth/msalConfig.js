@@ -1,10 +1,10 @@
 // Microsoft Authentication Library (MSAL) Configuration
 // Uses OAuth 2.0 Authorization Code flow with PKCE — no secrets in the browser
 
-import { getEffectiveOneDriveConfig, loadSettings } from '../utils/settingsStorage';
+import { getEffectiveOneDriveConfig } from '../utils/settingsStorage';
 
-export function buildMsalConfig(settings = loadSettings()) {
-  const effective = getEffectiveOneDriveConfig(settings);
+export function buildMsalConfigForConnection(connection) {
+  const effective = getEffectiveOneDriveConfig(connection);
 
   return {
     auth: {
@@ -31,8 +31,6 @@ export function buildMsalConfig(settings = loadSettings()) {
     },
   };
 }
-
-export const msalConfig = buildMsalConfig();
 
 // Scopes: User.Read for profile info, Files.ReadWrite for OneDrive browsing and cross-cloud transfers
 export const loginRequest = {

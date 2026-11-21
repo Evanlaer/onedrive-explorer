@@ -11,7 +11,7 @@
 }
 
 .settings-card {
-  width: 620px;
+  width: 680px;
   max-width: 100%;
   max-height: calc(100vh - 40px);
   background: var(--surface-high);
@@ -81,11 +81,157 @@
 }
 
 .settings-body {
-  padding: 18px 22px;
+  padding: 16px 22px;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 14px;
+}
+
+.settings-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.settings-toolbar-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+
+.settings-toolbar-count {
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--surface-default);
+  border: 1px solid var(--outline-variant);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+}
+
+.settings-add-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.settings-add-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 11px;
+  border-radius: var(--radius-sm);
+  font-size: 0.74rem;
+  font-weight: 600;
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-default);
+  color: var(--text-primary);
+  transition: background var(--transition-fast), border-color var(--transition-fast);
+}
+
+.settings-add-btn--ms:hover {
+  border-color: var(--primary);
+  background: var(--primary-glow);
+  color: var(--primary);
+}
+
+.settings-add-btn--google:hover {
+  border-color: #ea4335;
+  background: rgba(234, 67, 53, 0.14);
+  color: #ff9c94;
+}
+
+.settings-conn-heading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-conn-name-input {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  padding: 3px 7px;
+  margin-left: -7px;
+  outline: none;
+  width: 100%;
+  max-width: 280px;
+  transition: border-color var(--transition-fast), background var(--transition-fast);
+}
+
+.settings-conn-name-input:hover {
+  border-color: var(--outline-variant);
+  background: var(--surface-low);
+}
+
+.settings-conn-name-input:focus {
+  border-color: var(--primary);
+  background: var(--surface-base);
+}
+
+.settings-provider-tag {
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.settings-card-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.settings-icon-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--outline-variant);
+  background: var(--surface-low);
+  color: var(--text-secondary);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.settings-icon-btn:hover:not(:disabled) {
+  background: var(--surface-bright);
+  color: var(--text-primary);
+}
+
+.settings-icon-btn--delete:hover:not(:disabled) {
+  background: var(--error-dim);
+  border-color: rgba(255, 113, 108, 0.4);
+  color: var(--error);
+}
+
+.settings-icon-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.settings-conn-details {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--outline-variant);
 }
 
 .settings-panel {

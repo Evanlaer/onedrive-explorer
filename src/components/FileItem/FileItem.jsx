@@ -29,7 +29,8 @@ function FileIcon({ config }) {
 
 export default function FileItem({
   item,
-  cloudType,
+  paneId,
+  connectionId,
   canTransfer,
   dragState,
   isSelected = false,
@@ -50,7 +51,11 @@ export default function FileItem({
   const [isFolderDropOver, setIsFolderDropOver] = useState(false);
 
   const isValidFolderDropTarget =
-    isFolder && canTransfer && dragState && dragState.sourceCloud !== cloudType;
+    isFolder &&
+    canTransfer &&
+    dragState &&
+    dragState.sourcePaneId !== paneId &&
+    dragState.sourceConnectionId !== connectionId;
 
   const handleRowClick = (e) => {
     // Modifier click (Ctrl/Cmd/Shift) selects both files and folders without navigating
@@ -146,7 +151,7 @@ export default function FileItem({
       aria-selected={isSelected}
       tabIndex={0}
       aria-label={`${isFolder ? 'Folder' : 'File'}: ${item.name}`}
-      id={`file-item-${cloudType}-${item.id}`}
+      id={`file-item-${paneId}-${item.id}`}
     >
       <button
         type="button"

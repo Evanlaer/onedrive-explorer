@@ -8,6 +8,8 @@ import {
   FiTrash2,
   FiEdit2,
   FiSettings,
+  FiCloud,
+  FiHardDrive,
 } from 'react-icons/fi';
 import Header from '../Header/Header';
 import FileList from '../FileList/FileList';
@@ -39,17 +41,70 @@ function createMultiDragBadge(count) {
   return el;
 }
 
+function ConnectionPicker({ paneId, connection, connections, onSelectConnection }) {
+  const oneDrives = connections.filter((c) => c.provider === 'onedrive');
+  const googleDrives = connections.filter((c) => c.provider === 'google');
+  const isGoogle = connection?.provider === 'google';
+
+  const formatOptionLabel = (conn) => {
+    const statusDot = conn.isConnected ? '● ' : '○ ';
+    const sub = conn.email ? ` — ${conn.email}` : '';
+    return `${statusDot}${conn.name}${sub}`;
+  };
+
+  return (
+    <div className="pane-picker-wrap">
+      <span
+        className={`pane-picker-badge ${
+          isGoogle ? 'pane-picker-badge--google' : 'pane-picker-badge--ms'
+        }`}
+        aria-hidden="true"
+      >
+        {isGoogle ? <FiHardDrive size={12} /> : <FiCloud size={12} />}
+      </span>
+      <select
+        className="pane-picker-select"
+        aria-label={`${paneId === 'left' ? 'Left' : 'Right'} pane cloud connection`}
+        value={connection?.id || ''}
+        onChange={(e) => onSelectConnection?.(e.target.value)}
+      >
+        {oneDrives.length > 0 && (
+          <optgroup label="OneDrive">
+            {oneDrives.map((c) => (
+              <option key={c.id} value={c.id}>
+                {formatOptionLabel(c)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+        {googleDrives.length > 0 && (
+          <optgroup label="Google Drive">
+            {googleDrives.map((c) => (
+              <option key={c.id} value={c.id}>
+                {formatOptionLabel(c)}
+              </option>
+            ))}
+          </optgroup>
+        )}
+      </select>
+    </div>
+  );
+}
+
 /**
- * CloudPane — A self-contained explorer pane for either OneDrive or Google Drive,
- * supporting multi-selection and cross-cloud drag-and-drop Copy and Move.
+ * CloudPane — A flexible explorer pane that can display any saved OneDrive or Google Drive
+ * connection via its top pick list, with multi-select and cross-account drag-and-drop Copy/Move.
  */
 export default function CloudPane({
-  type,
-  title,
+  paneId,
+  connection,
+  connections = [],
+  onSelectConnection,
   isAuthenticated,
   isConnecting = false,
   authNotice = null,
-  accessToken,
+  oneDriveAuth = null,
+  accessToken = null,
   onLogin,
   onOpenSettings,
   refreshKey = 0,
@@ -64,6 +119,10 @@ export default function CloudPane({
   onRequestRename,
   onAuthExpired,
 }) {
+  const type = connection?.provider || 'onedrive';
+  const title = connection?.name || (type === 'google' ? 'Google Drive' : 'OneDrive');
+  const connectionId = connection?.id || '';
+
   const [currentFolderId, setCurrentFolderId] = useState(null);
   const [breadcrumbs, setBreadcrumbs] = useState([]);
   const [selectedIds, setSelectedIds] = useState(() => new Set());
@@ -72,8 +131,9 @@ export default function CloudPane({
   const [hoveredFolderName, setHoveredFolderName] = useState(null);
   const [shiftHeld, setShiftHeld] = useState(false);
 
-  // Use the appropriate hook based on drive type
+  // Use the appropriate hook based on the selected connection's provider
   const oneDriveData = useDriveItems(
+    type === 'onedrive' && isAuthenticated ? oneDriveAuth : null,
     type === 'onedrive' && isAuthenticated ? currentFolderId : 'DISABLED',
     refreshKey
   );
@@ -113,7 +173,11 @@ export default function CloudPane({
   }, [selectedCount]);
 
   const isValidDropPane =
-    isAuthenticated && canTransfer && dragState && dragState.sourceCloud !== type;
+    isAuthenticated &&
+    canTransfer &&
+    dragState &&
+    dragState.sourcePaneId !== paneId &&
+    dragState.sourceConnectionId !== connectionId;
 
   const showDropActive = Boolean(isValidDropPane && isPaneDropOver);
   const activeHoveredFolder = showDropActive ? hoveredFolderName : null;
@@ -191,7 +255,6 @@ export default function CloudPane({
       handleToggleSelect(item, e);
       return;
     }
-    // Plain click on a file: toggle if it's the only selected item, else select it
     if (activeSelectedIds.size === 1 && activeSelectedIds.has(item.id)) {
       clearSelection();
     } else {
@@ -215,15 +278,16 @@ export default function CloudPane({
       ? items.filter((it) => activeSelectedIds.has(it.id))
       : [item];
 
+    const dragPayload = {
+      sourcePaneId: paneId,
+      sourceConnectionId: connectionId,
+      sourceCloud: type,
+      items: itemsToDrag,
+    };
+
     e.dataTransfer.effectAllowed = 'copyMove';
-    e.dataTransfer.setData(
-      'application/x-multicloud-items',
-      JSON.stringify({ sourceCloud: type, items: itemsToDrag })
-    );
-    e.dataTransfer.setData(
-      'text/plain',
-      itemsToDrag.map((it) => it.name).join(', ')
-    );
+    e.dataTransfer.setData('application/x-multicloud-items', JSON.stringify(dragPayload));
+    e.dataTransfer.setData('text/plain', itemsToDrag.map((it) => it.name).join(', '));
 
     if (itemsToDrag.length > 1) {
       const badge = createMultiDragBadge(itemsToDrag.length);
@@ -231,7 +295,7 @@ export default function CloudPane({
       requestAnimationFrame(() => badge.remove());
     }
 
-    onDragStartItems?.(type, itemsToDrag, clearSelection);
+    onDragStartItems?.(dragPayload, clearSelection);
   };
 
   const handleDragEndItem = () => {
@@ -279,7 +343,13 @@ export default function CloudPane({
     setHoveredFolderName(null);
     setShiftHeld(false);
 
-    if (!payload || payload.sourceCloud === type || !payload.items?.length) return;
+    if (
+      !payload ||
+      payload.sourceConnectionId === connectionId ||
+      !payload.items?.length
+    ) {
+      return;
+    }
 
     const mode = e.shiftKey
       ? transferMode === 'copy'
@@ -288,9 +358,9 @@ export default function CloudPane({
       : transferMode;
 
     onDropItems?.({
-      sourceCloud: payload.sourceCloud,
+      sourceConnectionId: payload.sourceConnectionId,
       items: payload.items,
-      targetCloud: type,
+      targetConnectionId: connectionId,
       targetFolderId: type === 'google' ? currentFolderId || 'root' : currentFolderId,
       targetFolderName: breadcrumbs.length > 0 ? currentFolderLabel : '',
       mode,
@@ -303,7 +373,13 @@ export default function CloudPane({
     setHoveredFolderName(null);
     setShiftHeld(false);
 
-    if (!payload || payload.sourceCloud === type || !payload.items?.length) return;
+    if (
+      !payload ||
+      payload.sourceConnectionId === connectionId ||
+      !payload.items?.length
+    ) {
+      return;
+    }
 
     const mode = isShiftKey
       ? transferMode === 'copy'
@@ -312,9 +388,9 @@ export default function CloudPane({
       : transferMode;
 
     onDropItems?.({
-      sourceCloud: payload.sourceCloud,
+      sourceConnectionId: payload.sourceConnectionId,
       items: payload.items,
-      targetCloud: type,
+      targetConnectionId: connectionId,
       targetFolderId: targetFolder.id,
       targetFolderName: targetFolder.name,
       mode,
@@ -323,38 +399,54 @@ export default function CloudPane({
 
   if (!isAuthenticated) {
     return (
-      <div className="cloud-pane cloud-pane--locked">
-        <div className="pane-auth-card">
-          <h3>{title}</h3>
-          {isConnecting ? (
-            <>
-              <div className="pane-auth-connecting">
-                <FiRefreshCw className="pane-refresh-spin" size={16} />
-                <span>Reconnecting automatically…</span>
-              </div>
-              <p className="pane-auth-sub">Using your saved connection settings</p>
-            </>
-          ) : (
-            <>
-              <p>Login to browse your {title} files.</p>
-              {authNotice && <p className="pane-auth-notice">{authNotice}</p>}
-              <div className="pane-auth-actions">
-                <button className="login-btn-small" onClick={onLogin}>
-                  Sign in
-                </button>
-                {onOpenSettings && (
-                  <button
-                    type="button"
-                    className="pane-settings-link"
-                    onClick={onOpenSettings}
-                  >
-                    <FiSettings size={13} />
-                    <span>Connection Settings</span>
+      <div className="cloud-pane cloud-pane--locked-shell">
+        <div className="pane-header-wrap pane-header-wrap--locked">
+          <div className="pane-title-row pane-title-row--locked">
+            <ConnectionPicker
+              paneId={paneId}
+              connection={connection}
+              connections={connections}
+              onSelectConnection={onSelectConnection}
+            />
+          </div>
+        </div>
+
+        <div className="cloud-pane--locked">
+          <div className="pane-auth-card">
+            <h3>{title}</h3>
+            {isConnecting ? (
+              <>
+                <div className="pane-auth-connecting">
+                  <FiRefreshCw className="pane-spin" size={16} />
+                  <span>Connecting…</span>
+                </div>
+                <p className="pane-auth-sub">Using your saved connection settings</p>
+              </>
+            ) : (
+              <>
+                <p>
+                  Sign in to browse your {type === 'google' ? 'Google Drive' : 'OneDrive'} files
+                  {connection?.savedEmail ? ` (${connection.savedEmail})` : ''}.
+                </p>
+                {authNotice && <p className="pane-auth-notice">{authNotice}</p>}
+                <div className="pane-auth-actions">
+                  <button className="login-btn-small" onClick={onLogin}>
+                    Sign in
                   </button>
-                )}
-              </div>
-            </>
-          )}
+                  {onOpenSettings && (
+                    <button
+                      type="button"
+                      className="pane-settings-link"
+                      onClick={onOpenSettings}
+                    >
+                      <FiSettings size={13} />
+                      <span>Connection Settings</span>
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </div>
     );
@@ -365,6 +457,7 @@ export default function CloudPane({
     const selectedItem = items.find((it) => activeSelectedIds.has(it.id));
     if (!selectedItem) return;
     onRequestRename?.({
+      connectionId,
       cloud: type,
       title,
       item: selectedItem,
@@ -376,6 +469,7 @@ export default function CloudPane({
     if (selectedCount === 0) return;
     const selectedItems = items.filter((it) => activeSelectedIds.has(it.id));
     onRequestDelete?.({
+      connectionId,
       cloud: type,
       title,
       items: selectedItems,
@@ -414,7 +508,12 @@ export default function CloudPane({
       <div className="pane-header-wrap">
         <div className="pane-title-row">
           <div className="pane-title-group">
-            <div className="pane-title">{title}</div>
+            <ConnectionPicker
+              paneId={paneId}
+              connection={connection}
+              connections={connections}
+              onSelectConnection={onSelectConnection}
+            />
             {selectedCount > 0 && (
               <div className="pane-selection-pill" aria-live="polite">
                 <span>{selectedCount} selected</span>
@@ -477,7 +576,8 @@ export default function CloudPane({
           items={items}
           loading={loading}
           error={error}
-          cloudType={type}
+          paneId={paneId}
+          connectionId={connectionId}
           canTransfer={canTransfer}
           dragState={dragState}
           selectedIds={activeSelectedIds}
@@ -507,7 +607,9 @@ export default function CloudPane({
                 : ''}
             </span>
             <span className="pane-drop-hint">
-              {activeShiftHeld ? 'Shift active' : `Hold Shift to ${transferMode === 'copy' ? 'Move' : 'Copy'}`}
+              {activeShiftHeld
+                ? 'Shift active'
+                : `Hold Shift to ${transferMode === 'copy' ? 'Move' : 'Copy'}`}
             </span>
           </div>
         )}

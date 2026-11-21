@@ -27,93 +27,105 @@ export function isItemFolder(item) {
   return Boolean(item?.folder || item?.mimeType === 'application/vnd.google-apps.folder');
 }
 
-async function listFolder(cloud, folderId, msalInstance, googleToken) {
-  if (cloud === 'onedrive') {
-    return getFolderChildren(msalInstance, folderId);
+async function listFolder(endpoint, folderId) {
+  if (endpoint.provider === 'onedrive') {
+    return getFolderChildren(endpoint.oneDriveAuth, folderId);
   }
-  return getDriveItems(googleToken, folderId || 'root');
+  return getDriveItems(endpoint.accessToken, folderId || 'root');
 }
 
-async function getDownloadDescriptor(cloud, item, msalInstance, googleToken) {
-  if (cloud === 'onedrive') {
-    return getOneDriveDownloadDescriptor(msalInstance, item);
+async function getDownloadDescriptor(endpoint, item) {
+  if (endpoint.provider === 'onedrive') {
+    return getOneDriveDownloadDescriptor(endpoint.oneDriveAuth, item);
   }
-  return getGoogleDriveDownloadDescriptor(googleToken, item);
+  return getGoogleDriveDownloadDescriptor(endpoint.accessToken, item);
 }
 
-async function downloadFileInBrowser(cloud, item, msalInstance, googleToken) {
-  if (cloud === 'onedrive') {
-    return downloadOneDriveFile(msalInstance, item);
+async function downloadFileInBrowser(endpoint, item) {
+  if (endpoint.provider === 'onedrive') {
+    return downloadOneDriveFile(endpoint.oneDriveAuth, item);
   }
-  return downloadGoogleDriveFile(googleToken, item);
+  return downloadGoogleDriveFile(endpoint.accessToken, item);
 }
 
 async function uploadFileInBrowser(
-  cloud,
+  endpoint,
   parentFolderId,
   fileName,
   blob,
   mimeType,
-  msalInstance,
-  googleToken,
   onChunkProgress
 ) {
-  if (cloud === 'onedrive') {
-    return uploadOneDriveFile(msalInstance, parentFolderId, fileName, blob, mimeType, onChunkProgress);
+  if (endpoint.provider === 'onedrive') {
+    return uploadOneDriveFile(
+      endpoint.oneDriveAuth,
+      parentFolderId,
+      fileName,
+      blob,
+      mimeType,
+      onChunkProgress
+    );
   }
-  return uploadGoogleDriveFile(googleToken, parentFolderId || 'root', fileName, blob, mimeType, onChunkProgress);
+  return uploadGoogleDriveFile(
+    endpoint.accessToken,
+    parentFolderId || 'root',
+    fileName,
+    blob,
+    mimeType,
+    onChunkProgress
+  );
 }
 
-async function createFolder(cloud, parentFolderId, folderName, msalInstance, googleToken) {
-  if (cloud === 'onedrive') {
-    return createOneDriveFolder(msalInstance, parentFolderId, folderName);
+async function createFolder(endpoint, parentFolderId, folderName) {
+  if (endpoint.provider === 'onedrive') {
+    return createOneDriveFolder(endpoint.oneDriveAuth, parentFolderId, folderName);
   }
-  return createGoogleDriveFolder(googleToken, parentFolderId || 'root', folderName);
+  return createGoogleDriveFolder(endpoint.accessToken, parentFolderId || 'root', folderName);
 }
 
-async function deleteItem(cloud, itemId, msalInstance, googleToken) {
-  if (cloud === 'onedrive') {
-    return deleteOneDriveItem(msalInstance, itemId);
+async function deleteItem(endpoint, itemId) {
+  if (endpoint.provider === 'onedrive') {
+    return deleteOneDriveItem(endpoint.oneDriveAuth, itemId);
   }
-  return deleteGoogleDriveItem(googleToken, itemId);
+  return deleteGoogleDriveItem(endpoint.accessToken, itemId);
 }
 
 /**
  * Deletes a single file or folder in OneDrive (Recycle Bin) or Google Drive (Trash).
  */
-export async function deleteCloudItem({ item, cloud, msalInstance, googleToken }) {
-  await deleteItem(cloud, item.id, msalInstance, googleToken);
+export async function deleteCloudItem({ item, endpoint }) {
+  await deleteItem(endpoint, item.id);
 }
 
 /**
  * Renames a single file or folder in OneDrive or Google Drive.
  */
-export async function renameCloudItem({ item, cloud, newName, msalInstance, googleToken }) {
-  if (cloud === 'onedrive') {
-    return renameOneDriveItem(msalInstance, item.id, newName);
+export async function renameCloudItem({ item, endpoint, newName }) {
+  if (endpoint.provider === 'onedrive') {
+    return renameOneDriveItem(endpoint.oneDriveAuth, item.id, newName);
   }
-  return renameGoogleDriveItem(googleToken, item.id, newName);
+  return renameGoogleDriveItem(endpoint.accessToken, item.id, newName);
 }
 
 /**
- * Streams a single file directly cloud-to-cloud via the local Vite relay (/api/transfer-file),
- * avoiding browser CORS restrictions and ~10 MB response body caps.
- * Falls back to direct browser download+upload if the relay endpoint is unavailable (e.g. static host).
+ * Streams a single file directly cloud-to-cloud via the streaming relay (/api/transfer-file),
+ * supporting OneDrive <-> Google Drive, OneDrive <-> OneDrive, and Google Drive <-> Google Drive.
+ * Falls back to direct browser download+upload if the relay endpoint is unavailable.
  */
 async function transferSingleFile({
   item,
-  sourceCloud,
-  targetCloud,
+  source,
+  target,
   targetFolderId,
-  msalInstance,
-  googleToken,
   onStageProgress,
 }) {
-  const descriptor = await getDownloadDescriptor(sourceCloud, item, msalInstance, googleToken);
+  const descriptor = await getDownloadDescriptor(source, item);
   const targetAccessToken =
-    targetCloud === 'onedrive' ? await getAccessToken(msalInstance) : googleToken;
+    target.provider === 'onedrive'
+      ? await getAccessToken(target.oneDriveAuth)
+      : target.accessToken;
 
-  // Try local Node transfer relay first (handles large files & CORS cleanly)
+  // Try Node / Vercel transfer relay first (handles large files & CORS cleanly)
   let relayRes = null;
   try {
     relayRes = await fetch('/api/transfer-file', {
@@ -125,7 +137,7 @@ async function transferSingleFile({
           authHeader: descriptor.authHeader,
         },
         target: {
-          cloud: targetCloud,
+          cloud: target.provider,
           accessToken: targetAccessToken,
           parentFolderId: targetFolderId,
           fileName: descriptor.fileName,
@@ -183,24 +195,17 @@ async function transferSingleFile({
     return { fileName: descriptor.fileName, item: doneItem };
   }
 
-  // Fallback for static hosting without Vite relay: direct browser download -> upload
+  // Fallback for static hosting without relay: direct browser download -> upload
   onStageProgress?.('downloading', 15, descriptor.fileName);
-  const { blob, fileName, mimeType } = await downloadFileInBrowser(
-    sourceCloud,
-    item,
-    msalInstance,
-    googleToken
-  );
+  const { blob, fileName, mimeType } = await downloadFileInBrowser(source, item);
 
   onStageProgress?.('uploading', 0, fileName);
   const uploaded = await uploadFileInBrowser(
-    targetCloud,
+    target,
     targetFolderId,
     fileName,
     blob,
     mimeType,
-    msalInstance,
-    googleToken,
     (upPct) => onStageProgress?.('uploading', upPct, fileName)
   );
 
@@ -210,19 +215,19 @@ async function transferSingleFile({
 /**
  * Recursively scans a source folder so we know the exact total file count up front.
  */
-async function scanFolderTree(cloud, folderItem, msalInstance, googleToken, depth = 0) {
+async function scanFolderTree(source, folderItem, depth = 0) {
   if (depth >= MAX_RECURSION_DEPTH) {
     return { item: folderItem, files: [], folders: [], fileCount: 0, truncated: true };
   }
 
-  const children = await listFolder(cloud, folderItem.id, msalInstance, googleToken);
+  const children = await listFolder(source, folderItem.id);
   const files = [];
   const folders = [];
   let fileCount = 0;
 
   for (const child of children) {
     if (isItemFolder(child)) {
-      const subTree = await scanFolderTree(cloud, child, msalInstance, googleToken, depth + 1);
+      const subTree = await scanFolderTree(source, child, depth + 1);
       folders.push(subTree);
       fileCount += subTree.fileCount;
     } else {
@@ -235,23 +240,24 @@ async function scanFolderTree(cloud, folderItem, msalInstance, googleToken, dept
 }
 
 /**
- * Transfers a single file or a folder (recursively) between OneDrive and Google Drive.
+ * Transfers a single file or a folder (recursively) between any two different cloud connections.
  */
 export async function transferItem({
   item,
-  sourceCloud,
-  targetCloud,
+  source,
+  target,
   targetFolderId,
   mode = 'copy',
-  msalInstance,
-  googleToken,
   onProgress,
 }) {
-  if (sourceCloud === targetCloud) {
-    throw new Error('Source and destination clouds must be different.');
+  if (source.connectionId === target.connectionId) {
+    throw new Error('Source and destination connections must be different.');
   }
 
-  const normalizedTargetFolder = targetCloud === 'google' ? targetFolderId || 'root' : targetFolderId || null;
+  const normalizedTargetFolder =
+    target.provider === 'google' ? targetFolderId || 'root' : targetFolderId || null;
+  const sourceLabel =
+    source.label || (source.provider === 'onedrive' ? 'OneDrive' : 'Google Drive');
 
   // ── Case 1: Single File ──────────────────────────────────────────────────
   if (!isItemFolder(item)) {
@@ -266,11 +272,9 @@ export async function transferItem({
 
     const { fileName } = await transferSingleFile({
       item,
-      sourceCloud,
-      targetCloud,
+      source,
+      target,
       targetFolderId: normalizedTargetFolder,
-      msalInstance,
-      googleToken,
       onStageProgress: (stage, pct, name) => {
         if (stage === 'downloading') {
           const overallPct = Math.max(5, Math.min(48, Math.round(5 + pct * 0.43)));
@@ -304,10 +308,10 @@ export async function transferItem({
         completed: 1,
         total: 1,
         percent: 96,
-        detail: `Removing original from ${sourceCloud === 'onedrive' ? 'OneDrive' : 'Google Drive'}…`,
+        detail: `Removing original from ${sourceLabel}…`,
       });
       try {
-        await deleteItem(sourceCloud, item.id, msalInstance, googleToken);
+        await deleteItem(source, item.id);
         sourceDeleted = true;
       } catch (err) {
         throw new Error(`Copied to destination, but removing original failed: ${err.message}`);
@@ -336,7 +340,7 @@ export async function transferItem({
     detail: `Scanning folder "${item.name}"…`,
   });
 
-  const tree = await scanFolderTree(sourceCloud, item, msalInstance, googleToken);
+  const tree = await scanFolderTree(source, item);
   const totalFiles = tree.fileCount;
   const warnings = [];
   let completedFiles = 0;
@@ -361,23 +365,15 @@ export async function transferItem({
       detail: `Creating folder "${node.item.name}"…`,
     });
 
-    const createdFolder = await createFolder(
-      targetCloud,
-      destParentId,
-      node.item.name,
-      msalInstance,
-      googleToken
-    );
+    const createdFolder = await createFolder(target, destParentId, node.item.name);
 
     for (const file of node.files) {
       try {
         await transferSingleFile({
           item: file,
-          sourceCloud,
-          targetCloud,
+          source,
+          target,
           targetFolderId: createdFolder.id,
-          msalInstance,
-          googleToken,
           onStageProgress: (stage, pct, name) => {
             const subFrac = stage === 'downloading' ? (pct / 100) * 0.5 : 0.5 + (pct / 100) * 0.5;
             onProgress?.({
@@ -417,7 +413,7 @@ export async function transferItem({
         percent: 96,
         detail: `Removing original folder "${item.name}"…`,
       });
-      await deleteItem(sourceCloud, item.id, msalInstance, googleToken);
+      await deleteItem(source, item.id);
       sourceDeleted = true;
     } else {
       warnings.push(

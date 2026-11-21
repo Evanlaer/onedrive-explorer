@@ -3,14 +3,14 @@
 A premium, dual-pane file explorer built with **React + Vite**. Authenticate with your Microsoft and Google accounts to browse, organize, rename, delete, copy, and move files and folders side-by-side.
 
 ## Features
-- **Dual-Pane Layout**: Browse OneDrive and Google Drive simultaneously with independent breadcrumbs and refresh controls.
-- **Independent Auth & Automatic Reconnection (Connection Settings)**:
-  - Open **Connection Settings** in the sidebar to store OneDrive and Google Drive connection parameters (`Auto-connect on startup`, optional Azure/Google Client ID overrides, Microsoft authority, and default Copy/Move mode).
-  - **OneDrive** persists sessions via Microsoft MSAL (`localStorage` + silent refresh / `ssoSilent`) when auto-connect is enabled.
-  - **Google Drive** uses an OAuth 2.0 refresh-token flow via `/api/google-auth` (both locally in Vite and on Vercel) so Google Drive silently reconnects on startup and renews before expiry with zero popups (falls back gracefully to standard 1-hour GIS tokens if `GOOGLE_CLIENT_SECRET` is not set).
+- **Flexible Dual-Pane Layout with Account Pick Lists**: Connect multiple OneDrive and Google Drive accounts simultaneously, and pick any saved connection in the Left or Right pane (supports **OneDrive ↔ Google Drive**, **OneDrive ↔ OneDrive**, and **Google Drive ↔ Google Drive**).
+- **Multi-Account Connection Settings & Automatic Reconnection**:
+  - Open **Connection Settings** in the sidebar to add, rename, configure, connect, disconnect, or remove multiple OneDrive and Google Drive accounts (`Auto-connect on startup`, optional per-account Azure/Google Client ID & Secret overrides, Microsoft authority, and default Copy/Move mode).
+  - **OneDrive** isolates multiple Microsoft accounts via MSAL v5 (`homeAccountId` + dynamic MSAL instance registry, `localStorage` cache, and `ssoSilent` recovery).
+  - **Google Drive** stores per-account OAuth 2.0 refresh tokens via `/api/google-auth` (both locally in Vite and on Vercel) so every saved Google Drive reconnects silently on startup and renews before expiry with zero popups (falls back gracefully to 1-hour GIS tokens if `GOOGLE_CLIENT_SECRET` is not set).
 - **Multi-Select & Batch Drag & Drop (Copy & Move)**:
   - Select single or multiple files and folders via checkboxes, **Select All**, `Ctrl/Cmd+Click`, or `Shift+Click` range selection (`Esc` to clear).
-  - Drag one or many selected items between OneDrive and Google Drive in either direction — drop into the open folder or directly onto a target subfolder row.
+  - Drag one or many selected items between any two connected accounts (OneDrive ↔ Google Drive, OneDrive ↔ OneDrive, or Google Drive ↔ Google Drive) — drop into the open folder or directly onto a target subfolder row.
   - **Copy by default**, with a sidebar **Copy / Move** switch and **`Shift`-key override** on drop.
   - Safe Move behavior: originals are sent to OneDrive Recycle Bin / Google Drive Trash only after upload completes cleanly.
 - **Delete & Rename on Both Clouds**:
@@ -37,7 +37,7 @@ A premium, dual-pane file explorer built with **React + Vite**. Authenticate wit
 
 3. **Required OAuth Scopes**:
    - **Azure App Registration**: `User.Read`, `Files.ReadWrite` (Microsoft Graph delegated permissions).
-   - **Google Cloud Console**: `https://www.googleapis.com/auth/drive` (Google Auth Platform → Data Access).
+   - **Google Cloud Console**: `https://www.googleapis.com/auth/drive` (Google Auth Platform → Data Access). While the app is in **Testing** mode, add every Google account you plan to connect under **Google Auth Platform → Audience → Test users**.
 
 4. **Run locally**:
    ```bash

@@ -98,13 +98,13 @@ export default function TransferToast({ transfers, onDismiss, onClearCompleted }
 
             <div className="transfer-route">
               {t.mode === 'delete' || t.mode === 'rename' ? (
-                <span>{CLOUD_LABEL[t.sourceCloud]}</span>
+                <span>{t.sourceLabel || CLOUD_LABEL[t.sourceCloud]}</span>
               ) : (
                 <>
-                  <span>{CLOUD_LABEL[t.sourceCloud]}</span>
+                  <span>{t.sourceLabel || CLOUD_LABEL[t.sourceCloud]}</span>
                   <FiArrowRight size={11} />
                   <span>
-                    {CLOUD_LABEL[t.targetCloud]}
+                    {t.targetLabel || CLOUD_LABEL[t.targetCloud]}
                     {t.targetFolderName ? ` / ${t.targetFolderName}` : ''}
                   </span>
                 </>

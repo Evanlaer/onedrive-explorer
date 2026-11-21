@@ -94,6 +94,7 @@ export async function loginGoogleWithCode({ clientId, clientSecret = '', hint = 
       scope: DRIVE_SCOPE,
       ux_mode: 'popup',
       hint: hint || undefined,
+      select_account: !hint,
       callback: (response) => {
         if (response?.error) {
           reject(new Error(response.error_description || response.error));
@@ -202,7 +203,8 @@ export async function loginGoogleWithToken({
       },
     });
 
-    tokenClient.requestAccessToken({ prompt: forceConsent ? 'consent' : '' });
+    const prompt = forceConsent ? 'consent' : !hint ? 'select_account' : '';
+    tokenClient.requestAccessToken({ prompt });
   });
 }
 

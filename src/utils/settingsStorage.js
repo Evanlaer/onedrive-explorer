@@ -1,11 +1,20 @@
 /**
- * Persistent Connection Settings & Session Storage
- * Stores OneDrive & Google Drive connection parameters and preferences in localStorage.
+ * Persistent Multi-Connection Settings & Session Storage (v2)
+ * Stores an arbitrary number of OneDrive & Google Drive connections and
+ * per-connection OAuth sessions in localStorage / sessionStorage.
+ *
+ * Automatically migrates legacy v1 settings & Google sessions on first load.
  */
 
-const SETTINGS_KEY = 'mce_settings_v1';
-const GOOGLE_SESSION_KEY = 'mce_google_session_v1';
+const SETTINGS_V2_KEY = 'mce_settings_v2';
+const LEGACY_SETTINGS_V1_KEY = 'mce_settings_v1';
+
+const GOOGLE_SESSIONS_V2_KEY = 'mce_google_sessions_v2';
+const LEGACY_GOOGLE_SESSION_V1_KEY = 'mce_google_session_v1';
 const LEGACY_GOOGLE_TOKEN_KEY = 'google_token';
+
+export const DEFAULT_ONEDRIVE_ID = 'od-default';
+export const DEFAULT_GOOGLE_ID = 'gd-default';
 
 export const ALLOWED_MS_AUTHORITIES = [
   {
@@ -22,117 +31,238 @@ export const ALLOWED_MS_AUTHORITIES = [
   },
 ];
 
-export const DEFAULT_SETTINGS = {
-  onedrive: {
-    autoConnect: true,
-    clientIdOverride: '',
-    authority: 'consumers',
-    savedEmail: '',
-    savedDisplayName: '',
-  },
-  google: {
+const VALID_AUTHORITIES = new Set(ALLOWED_MS_AUTHORITIES.map((a) => a.value));
+
+export function createDefaultConnections() {
+  return [
+    {
+      id: DEFAULT_ONEDRIVE_ID,
+      provider: 'onedrive',
+      name: 'OneDrive',
+      autoConnect: true,
+      clientIdOverride: '',
+      authority: 'consumers',
+      savedAccountId: '',
+      savedEmail: '',
+      savedDisplayName: '',
+    },
+    {
+      id: DEFAULT_GOOGLE_ID,
+      provider: 'google',
+      name: 'Google Drive',
+      autoConnect: true,
+      clientIdOverride: '',
+      clientSecretOverride: '',
+      savedEmail: '',
+      savedDisplayName: '',
+    },
+  ];
+}
+
+export function createConnectionTemplate(provider, existingConnections = []) {
+  const isOneDrive = provider === 'onedrive';
+  const sameProviderCount = existingConnections.filter((c) => c.provider === provider).length;
+  const baseLabel = isOneDrive ? 'OneDrive' : 'Google Drive';
+  const name = sameProviderCount === 0 ? baseLabel : `${baseLabel} ${sameProviderCount + 1}`;
+  const id = `${isOneDrive ? 'od' : 'gd'}-${Date.now().toString(36)}-${Math.random()
+    .toString(36)
+    .slice(2, 6)}`;
+
+  if (isOneDrive) {
+    return {
+      id,
+      provider: 'onedrive',
+      name,
+      autoConnect: true,
+      clientIdOverride: '',
+      authority: 'consumers',
+      savedAccountId: '',
+      savedEmail: '',
+      savedDisplayName: '',
+    };
+  }
+
+  return {
+    id,
+    provider: 'google',
+    name,
     autoConnect: true,
     clientIdOverride: '',
     clientSecretOverride: '',
     savedEmail: '',
     savedDisplayName: '',
-  },
-  general: {
-    defaultTransferMode: 'copy',
-  },
-};
+  };
+}
 
-function mergeSettings(raw) {
-  const src = raw && typeof raw === 'object' ? raw : {};
-  const validAuthorities = new Set(ALLOWED_MS_AUTHORITIES.map((a) => a.value));
-  const authority = validAuthorities.has(src.onedrive?.authority)
-    ? src.onedrive.authority
-    : DEFAULT_SETTINGS.onedrive.authority;
+function normalizeConnection(raw, index = 0) {
+  const provider = raw?.provider === 'google' ? 'google' : 'onedrive';
+  const id =
+    typeof raw?.id === 'string' && raw.id.trim()
+      ? raw.id.trim()
+      : `${provider === 'onedrive' ? 'od' : 'gd'}-${index + 1}`;
+  const fallbackName = provider === 'onedrive' ? 'OneDrive' : 'Google Drive';
+  const name =
+    typeof raw?.name === 'string' && raw.name.trim() ? raw.name.trim() : fallbackName;
+
+  if (provider === 'onedrive') {
+    const authority = VALID_AUTHORITIES.has(raw?.authority) ? raw.authority : 'consumers';
+    return {
+      id,
+      provider: 'onedrive',
+      name,
+      autoConnect: typeof raw?.autoConnect === 'boolean' ? raw.autoConnect : true,
+      clientIdOverride:
+        typeof raw?.clientIdOverride === 'string' ? raw.clientIdOverride.trim() : '',
+      authority,
+      savedAccountId:
+        typeof raw?.savedAccountId === 'string' ? raw.savedAccountId.trim() : '',
+      savedEmail: typeof raw?.savedEmail === 'string' ? raw.savedEmail.trim() : '',
+      savedDisplayName:
+        typeof raw?.savedDisplayName === 'string' ? raw.savedDisplayName.trim() : '',
+    };
+  }
 
   return {
-    onedrive: {
-      autoConnect:
-        typeof src.onedrive?.autoConnect === 'boolean'
-          ? src.onedrive.autoConnect
-          : DEFAULT_SETTINGS.onedrive.autoConnect,
-      clientIdOverride:
-        typeof src.onedrive?.clientIdOverride === 'string'
-          ? src.onedrive.clientIdOverride.trim()
-          : '',
-      authority,
-      savedEmail:
-        typeof src.onedrive?.savedEmail === 'string'
-          ? src.onedrive.savedEmail.trim()
-          : '',
-      savedDisplayName:
-        typeof src.onedrive?.savedDisplayName === 'string'
-          ? src.onedrive.savedDisplayName.trim()
-          : '',
-    },
-    google: {
-      autoConnect:
-        typeof src.google?.autoConnect === 'boolean'
-          ? src.google.autoConnect
-          : DEFAULT_SETTINGS.google.autoConnect,
-      clientIdOverride:
-        typeof src.google?.clientIdOverride === 'string'
-          ? src.google.clientIdOverride.trim()
-          : '',
-      clientSecretOverride:
-        typeof src.google?.clientSecretOverride === 'string'
-          ? src.google.clientSecretOverride.trim()
-          : '',
-      savedEmail:
-        typeof src.google?.savedEmail === 'string'
-          ? src.google.savedEmail.trim()
-          : '',
-      savedDisplayName:
-        typeof src.google?.savedDisplayName === 'string'
-          ? src.google.savedDisplayName.trim()
-          : '',
-    },
+    id,
+    provider: 'google',
+    name,
+    autoConnect: typeof raw?.autoConnect === 'boolean' ? raw.autoConnect : true,
+    clientIdOverride:
+      typeof raw?.clientIdOverride === 'string' ? raw.clientIdOverride.trim() : '',
+    clientSecretOverride:
+      typeof raw?.clientSecretOverride === 'string' ? raw.clientSecretOverride.trim() : '',
+    savedEmail: typeof raw?.savedEmail === 'string' ? raw.savedEmail.trim() : '',
+    savedDisplayName:
+      typeof raw?.savedDisplayName === 'string' ? raw.savedDisplayName.trim() : '',
+  };
+}
+
+function normalizeSettings(raw) {
+  const src = raw && typeof raw === 'object' ? raw : {};
+  const rawConnections =
+    Array.isArray(src.connections) && src.connections.length > 0
+      ? src.connections
+      : createDefaultConnections();
+
+  const seenIds = new Set();
+  const connections = [];
+  rawConnections.forEach((c, idx) => {
+    const norm = normalizeConnection(c, idx);
+    if (!seenIds.has(norm.id)) {
+      seenIds.add(norm.id);
+      connections.push(norm);
+    }
+  });
+
+  const validIds = new Set(connections.map((c) => c.id));
+  const firstOneDrive = connections.find((c) => c.provider === 'onedrive')?.id || connections[0]?.id || '';
+  const firstGoogle =
+    connections.find((c) => c.provider === 'google')?.id ||
+    connections[1]?.id ||
+    connections[0]?.id ||
+    '';
+
+  const activeLeftConnectionId = validIds.has(src.activeLeftConnectionId)
+    ? src.activeLeftConnectionId
+    : firstOneDrive;
+  const activeRightConnectionId = validIds.has(src.activeRightConnectionId)
+    ? src.activeRightConnectionId
+    : firstGoogle;
+
+  return {
+    version: 2,
+    connections,
+    activeLeftConnectionId,
+    activeRightConnectionId,
     general: {
-      defaultTransferMode:
-        src.general?.defaultTransferMode === 'move' ? 'move' : 'copy',
+      defaultTransferMode: src.general?.defaultTransferMode === 'move' ? 'move' : 'copy',
     },
   };
 }
 
+function migrateLegacySettingsV1() {
+  try {
+    const rawV1 = localStorage.getItem(LEGACY_SETTINGS_V1_KEY);
+    if (!rawV1) return null;
+    const v1 = JSON.parse(rawV1);
+    const migrated = normalizeSettings({
+      version: 2,
+      connections: [
+        {
+          id: DEFAULT_ONEDRIVE_ID,
+          provider: 'onedrive',
+          name: v1.onedrive?.savedDisplayName
+            ? `OneDrive (${v1.onedrive.savedDisplayName})`
+            : 'OneDrive',
+          autoConnect:
+            typeof v1.onedrive?.autoConnect === 'boolean' ? v1.onedrive.autoConnect : true,
+          clientIdOverride: v1.onedrive?.clientIdOverride || '',
+          authority: v1.onedrive?.authority || 'consumers',
+          savedAccountId: '',
+          savedEmail: v1.onedrive?.savedEmail || '',
+          savedDisplayName: v1.onedrive?.savedDisplayName || '',
+        },
+        {
+          id: DEFAULT_GOOGLE_ID,
+          provider: 'google',
+          name: v1.google?.savedDisplayName
+            ? `Google Drive (${v1.google.savedDisplayName})`
+            : 'Google Drive',
+          autoConnect:
+            typeof v1.google?.autoConnect === 'boolean' ? v1.google.autoConnect : true,
+          clientIdOverride: v1.google?.clientIdOverride || '',
+          clientSecretOverride: v1.google?.clientSecretOverride || '',
+          savedEmail: v1.google?.savedEmail || '',
+          savedDisplayName: v1.google?.savedDisplayName || '',
+        },
+      ],
+      activeLeftConnectionId: DEFAULT_ONEDRIVE_ID,
+      activeRightConnectionId: DEFAULT_GOOGLE_ID,
+      general: {
+        defaultTransferMode: v1.general?.defaultTransferMode === 'move' ? 'move' : 'copy',
+      },
+    });
+    localStorage.setItem(SETTINGS_V2_KEY, JSON.stringify(migrated));
+    return migrated;
+  } catch {
+    return null;
+  }
+}
+
 export function loadSettings() {
   try {
-    const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return mergeSettings(null);
-    return mergeSettings(JSON.parse(raw));
+    const rawV2 = localStorage.getItem(SETTINGS_V2_KEY);
+    if (rawV2) {
+      return normalizeSettings(JSON.parse(rawV2));
+    }
+    const migrated = migrateLegacySettingsV1();
+    if (migrated) return migrated;
+    return normalizeSettings(null);
   } catch {
-    return mergeSettings(null);
+    return normalizeSettings(null);
   }
 }
 
 export function saveSettings(nextSettings) {
-  const normalized = mergeSettings(nextSettings);
+  const normalized = normalizeSettings(nextSettings);
   try {
-    localStorage.setItem(SETTINGS_KEY, JSON.stringify(normalized));
+    localStorage.setItem(SETTINGS_V2_KEY, JSON.stringify(normalized));
   } catch (err) {
     console.warn('[Settings] Failed to persist settings:', err);
   }
   return normalized;
 }
 
-export function updateSettings(updater) {
-  const current = loadSettings();
-  const next = typeof updater === 'function' ? updater(current) : { ...current, ...updater };
-  return saveSettings(next);
-}
-
 export function resetAllSettings() {
   try {
-    localStorage.removeItem(SETTINGS_KEY);
+    localStorage.removeItem(SETTINGS_V2_KEY);
+    localStorage.removeItem(LEGACY_SETTINGS_V1_KEY);
   } catch {
     // ignore storage errors
   }
-  clearGoogleSession();
+  clearAllGoogleSessions();
   clearMsalLocalCache();
-  return mergeSettings(null);
+  return normalizeSettings(null);
 }
 
 export function getEnvDefaults() {
@@ -142,63 +272,97 @@ export function getEnvDefaults() {
   };
 }
 
-export function getEffectiveOneDriveConfig(settings = loadSettings()) {
+export function getEffectiveOneDriveConfig(connection) {
   const env = getEnvDefaults();
   const clientId =
-    settings.onedrive.clientIdOverride || env.oneDriveClientId || 'YOUR_CLIENT_ID_HERE';
-  const authority = settings.onedrive.authority || 'consumers';
+    (connection?.clientIdOverride || '').trim() || env.oneDriveClientId || 'YOUR_CLIENT_ID_HERE';
+  const authority = VALID_AUTHORITIES.has(connection?.authority)
+    ? connection.authority
+    : 'consumers';
+  const cacheLocation = connection?.autoConnect === false ? 'sessionStorage' : 'localStorage';
+
   return {
     clientId,
     authority,
     authorityUrl: `https://login.microsoftonline.com/${authority}`,
-    cacheLocation: settings.onedrive.autoConnect ? 'localStorage' : 'sessionStorage',
-    usingOverride: Boolean(settings.onedrive.clientIdOverride),
+    cacheLocation,
+    usingOverride: Boolean((connection?.clientIdOverride || '').trim()),
   };
 }
 
-export function getEffectiveGoogleConfig(settings = loadSettings()) {
+export function getEffectiveGoogleConfig(connection) {
   const env = getEnvDefaults();
-  const clientId = settings.google.clientIdOverride || env.googleClientId || '';
+  const clientId = (connection?.clientIdOverride || '').trim() || env.googleClientId || '';
   return {
     clientId,
-    clientSecretOverride: settings.google.clientSecretOverride || '',
-    usingOverride: Boolean(settings.google.clientIdOverride),
+    clientSecretOverride: (connection?.clientSecretOverride || '').trim(),
+    usingOverride: Boolean((connection?.clientIdOverride || '').trim()),
   };
 }
 
-// ── Google Session Storage ──
+// ── Per-Connection Google Session Storage ──
 
-export function loadGoogleSession() {
-  const storages = [localStorage, sessionStorage];
-  for (const store of storages) {
+function readSessionMap(store) {
+  try {
+    const raw = store.getItem(GOOGLE_SESSIONS_V2_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeSessionMap(store, map) {
+  try {
+    if (Object.keys(map).length === 0) {
+      store.removeItem(GOOGLE_SESSIONS_V2_KEY);
+    } else {
+      store.setItem(GOOGLE_SESSIONS_V2_KEY, JSON.stringify(map));
+    }
+  } catch (err) {
+    console.warn('[Settings] Failed to write Google session map:', err);
+  }
+}
+
+function migrateLegacyGoogleSession() {
+  const stores = [localStorage, sessionStorage];
+  for (const store of stores) {
     try {
-      const raw = store.getItem(GOOGLE_SESSION_KEY);
+      const raw = store.getItem(LEGACY_GOOGLE_SESSION_V1_KEY);
       if (raw) {
         const parsed = JSON.parse(raw);
         if (parsed && (parsed.accessToken || parsed.refreshToken)) {
-          return {
-            accessToken: parsed.accessToken || null,
-            expiresAt: Number(parsed.expiresAt) || 0,
-            refreshToken: parsed.refreshToken || null,
-            storage: store === localStorage ? 'local' : 'session',
+          const migrated = {
+            [DEFAULT_GOOGLE_ID]: {
+              accessToken: parsed.accessToken || null,
+              expiresAt: Number(parsed.expiresAt) || 0,
+              refreshToken: store === localStorage ? parsed.refreshToken || null : null,
+            },
           };
+          writeSessionMap(store, migrated);
+          store.removeItem(LEGACY_GOOGLE_SESSION_V1_KEY);
+          return migrated;
         }
       }
     } catch {
-      // ignore corrupted entry
+      // ignore corrupted legacy entry
     }
   }
 
-  // Backward compatibility with v1.3 sessionStorage key
   try {
-    const legacy = sessionStorage.getItem(LEGACY_GOOGLE_TOKEN_KEY);
-    if (legacy) {
-      return {
-        accessToken: legacy,
-        expiresAt: 0,
-        refreshToken: null,
-        storage: 'session',
+    const legacyToken = sessionStorage.getItem(LEGACY_GOOGLE_TOKEN_KEY);
+    if (legacyToken) {
+      const migrated = {
+        [DEFAULT_GOOGLE_ID]: {
+          accessToken: legacyToken,
+          expiresAt: 0,
+          refreshToken: null,
+        },
       };
+      writeSessionMap(sessionStorage, migrated);
+      sessionStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
+      return migrated;
     }
   } catch {
     // ignore
@@ -207,31 +371,76 @@ export function loadGoogleSession() {
   return null;
 }
 
-export function saveGoogleSession(session, persist = true) {
-  const payload = {
-    accessToken: session.accessToken || null,
-    expiresAt: Number(session.expiresAt) || 0,
-    refreshToken: persist ? session.refreshToken || null : null,
-  };
+export function loadAllGoogleSessions() {
+  const localMap = readSessionMap(localStorage);
+  const sessionMap = readSessionMap(sessionStorage);
 
-  try {
-    sessionStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
-    if (persist) {
-      sessionStorage.removeItem(GOOGLE_SESSION_KEY);
-      localStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(payload));
-    } else {
-      localStorage.removeItem(GOOGLE_SESSION_KEY);
-      sessionStorage.setItem(GOOGLE_SESSION_KEY, JSON.stringify(payload));
-    }
-  } catch (err) {
-    console.warn('[Settings] Failed to persist Google session:', err);
+  if (Object.keys(localMap).length === 0 && Object.keys(sessionMap).length === 0) {
+    const migrated = migrateLegacyGoogleSession();
+    if (migrated) return migrated;
   }
+
+  const combined = {};
+  for (const [id, s] of Object.entries(sessionMap)) {
+    if (s && (s.accessToken || s.refreshToken)) {
+      combined[id] = {
+        accessToken: s.accessToken || null,
+        expiresAt: Number(s.expiresAt) || 0,
+        refreshToken: null,
+      };
+    }
+  }
+  for (const [id, s] of Object.entries(localMap)) {
+    if (s && (s.accessToken || s.refreshToken)) {
+      combined[id] = {
+        accessToken: s.accessToken || null,
+        expiresAt: Number(s.expiresAt) || 0,
+        refreshToken: s.refreshToken || null,
+      };
+    }
+  }
+  return combined;
 }
 
-export function clearGoogleSession() {
+export function saveGoogleSessionForConnection(connectionId, session, persist = true) {
+  if (!connectionId) return;
+  const payload = {
+    accessToken: session?.accessToken || null,
+    expiresAt: Number(session?.expiresAt) || 0,
+    refreshToken: persist ? session?.refreshToken || null : null,
+  };
+
+  const localMap = readSessionMap(localStorage);
+  const sessionMap = readSessionMap(sessionStorage);
+
+  if (persist) {
+    delete sessionMap[connectionId];
+    localMap[connectionId] = payload;
+  } else {
+    delete localMap[connectionId];
+    sessionMap[connectionId] = payload;
+  }
+
+  writeSessionMap(localStorage, localMap);
+  writeSessionMap(sessionStorage, sessionMap);
+}
+
+export function clearGoogleSessionForConnection(connectionId) {
+  if (!connectionId) return;
+  const localMap = readSessionMap(localStorage);
+  const sessionMap = readSessionMap(sessionStorage);
+  delete localMap[connectionId];
+  delete sessionMap[connectionId];
+  writeSessionMap(localStorage, localMap);
+  writeSessionMap(sessionStorage, sessionMap);
+}
+
+export function clearAllGoogleSessions() {
   try {
-    localStorage.removeItem(GOOGLE_SESSION_KEY);
-    sessionStorage.removeItem(GOOGLE_SESSION_KEY);
+    localStorage.removeItem(GOOGLE_SESSIONS_V2_KEY);
+    sessionStorage.removeItem(GOOGLE_SESSIONS_V2_KEY);
+    localStorage.removeItem(LEGACY_GOOGLE_SESSION_V1_KEY);
+    sessionStorage.removeItem(LEGACY_GOOGLE_SESSION_V1_KEY);
     sessionStorage.removeItem(LEGACY_GOOGLE_TOKEN_KEY);
   } catch {
     // ignore
@@ -240,12 +449,12 @@ export function clearGoogleSession() {
 
 export function isAccessTokenFresh(session, bufferMs = 60_000) {
   if (!session?.accessToken) return false;
-  if (!session.expiresAt) return true; // legacy token without expiry; validated via API
+  if (!session.expiresAt) return true;
   return session.expiresAt > Date.now() + bufferMs;
 }
 
 /**
- * Removes MSAL entries from localStorage when switching off persistent OneDrive sessions.
+ * Removes MSAL entries from localStorage (used during full reset).
  */
 export function clearMsalLocalCache() {
   try {
